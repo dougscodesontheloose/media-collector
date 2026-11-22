@@ -1,0 +1,160 @@
+{
+  "manifest_version": 3,
+  "name": "Media Collector",
+  "version": "5.0.0",
+  "description": "Colete fotos e v\u00eddeos na aba aberta, com processamento local.",
+  "permissions": [
+    "scripting",
+    "downloads",
+    "contextMenus",
+    "storage",
+    "webRequest",
+    "offscreen",
+    "sidePanel",
+    "nativeMessaging"
+  ],
+  "optional_permissions": ["notifications", "downloads.open"],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Media Collector",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "32": "assets/icon-32.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon-16.png",
+    "32": "assets/icon-32.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["media-indicator.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "exclude_matches": [
+        "https://*.instagram.com/*",
+        "https://*.x.com/*",
+        "https://*.twitter.com/*",
+        "https://*.reddit.com/*"
+      ],
+      "js": ["core.js", "adapters.js", "inline-source.js", "content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://instagram.com/*",
+        "https://*.instagram.com/*",
+        "https://x.com/*",
+        "https://*.x.com/*",
+        "https://twitter.com/*",
+        "https://*.twitter.com/*"
+      ],
+      "js": [
+        "mse-observer.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://*.x.com/*",
+        "https://twitter.com/*",
+        "https://*.twitter.com/*"
+      ],
+      "js": [
+        "traffic-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://*.x.com/*",
+        "https://twitter.com/*",
+        "https://*.twitter.com/*"
+      ],
+      "js": [
+        "mse-client.js",
+        "core.js",
+        "adapters.js",
+        "inline-source.js",
+        "x-inline.js"
+      ],
+      "css": [
+        "x-inline.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://instagram.com/*",
+        "https://*.instagram.com/*"
+      ],
+      "js": [
+        "mse-client.js",
+        "core.js",
+        "adapters.js",
+        "profile.js",
+        "content.js",
+        "inline-source.js",
+        "instagram-inline.js"
+      ],
+      "css": [
+        "instagram-inline.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://reddit.com/*",
+        "https://*.reddit.com/*"
+      ],
+      "js": [
+        "core.js",
+        "adapters.js",
+        "inline-source.js",
+        "reddit-inline.js"
+      ],
+      "css": [
+        "reddit-inline.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/icon-32.png"
+      ],
+      "matches": [
+        "https://x.com/*",
+        "https://*.x.com/*",
+        "https://twitter.com/*",
+        "https://*.twitter.com/*",
+        "https://instagram.com/*",
+        "https://*.instagram.com/*"
+      ]
+    }
+  ]
+}

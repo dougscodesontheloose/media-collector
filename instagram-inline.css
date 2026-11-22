@@ -1,0 +1,11 @@
+.coletor-ig-control{z-index:9999!important;border:1px solid rgba(117,2,15,.16)!important;background:#f8f5f1!important;color:#75020f!important;border-radius:8px!important;padding:5px!important;min-width:32px!important;min-height:32px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;font:600 11px -apple-system,BlinkMacSystemFont,sans-serif!important;box-shadow:0 1px 3px #0002!important;vertical-align:middle!important}.coletor-ig-control svg{width:20px!important;height:20px!important;display:block!important}.coletor-ig-control:hover{background:#fff!important;box-shadow:0 2px 5px #0003!important}.coletor-ig-control:focus-visible{outline:2px solid #a63a3a!important;outline-offset:2px!important}.coletor-ig-action-group{display:inline-flex!important;flex-direction:row!important;align-items:center!important;gap:5px!important;width:auto!important;white-space:nowrap!important}.coletor-ig-overlay{position:absolute!important;right:8px!important;top:8px!important;opacity:0!important;transition:opacity .15s!important}.coletor-ig-container:hover>.coletor-ig-overlay,.coletor-ig-overlay:focus-visible{opacity:1!important}.coletor-ig-story{position:fixed!important;z-index:2147483646!important;opacity:.94!important}.coletor-ig-toast{position:fixed!important;bottom:24px!important;left:50%!important;transform:translateX(-50%)!important;z-index:2147483647!important;padding:10px 14px!important;border-radius:8px!important;color:#fff!important;background:#2b0307!important;font:13px -apple-system,sans-serif!important;max-width:90vw!important}
+.coletor-ig-reel {
+ position: fixed !important;
+ z-index: 2147483646 !important;
+ opacity: .94 !important;
+}
+.coletor-ig-reel:disabled { cursor: progress !important; }
+.coletor-ig-grid-photo,.coletor-ig-grid-all{position:absolute!important;bottom:8px!important;opacity:0!important;z-index:2147483640!important;transition:opacity .15s!important}
+.coletor-ig-grid-photo{right:8px!important}
+.coletor-ig-grid-all{right:48px!important}
+.coletor-ig-grid-card:hover>.coletor-ig-grid-photo,.coletor-ig-grid-card:hover>.coletor-ig-grid-all,.coletor-ig-grid-photo:focus-visible,.coletor-ig-grid-all:focus-visible{opacity:1!important}
