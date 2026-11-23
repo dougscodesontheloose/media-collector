@@ -33,7 +33,7 @@
    ...item,
    format,
    mp4Direct: format === 'direct' && (response?.mp4 === true || declaredMP4),
-   expectedBytes: response?.expectedBytes
+   expectedBytes: response?.expectedBytes ?? item.expectedBytes
   };
  }
 

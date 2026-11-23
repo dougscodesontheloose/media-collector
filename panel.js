@@ -32,8 +32,14 @@ async function refreshDestination(){
  const result=await askWorker('destination-get');
  nativeDestination=result.available;
  $('destination-choose').disabled=!nativeDestination;
- $('destination-status').textContent=$('destination-browser').checked?'Pasta de downloads do navegador':
-  nativeDestination?result.destination.folder:'Auxiliar local indisponível. A pasta de downloads do navegador está ativa.';
+ $('destination-choose').textContent=result.destination?.mode==='folder'?'Alterar pasta padrão':'Escolher pasta para os downloads';
+ if(result.destination)$('destination-browser').checked=result.destination.mode==='browser';
+ $('destination-status').textContent=result.error||(
+  result.destination?.mode==='browser'
+   ?nativeDestination?'Pasta Downloads configurada no navegador. Essa preferência será usada nas próximas páginas.':'Pasta Downloads configurada no navegador. Para selecionar outra pasta, instale o auxiliar local.'
+   :result.destination?.folder
+    ?nativeDestination?`Memorizada: ${result.destination.folder}`:`Memorizada: ${result.destination.folder}. O auxiliar local está indisponível; os downloads não serão desviados para outra pasta.`
+    :'Auxiliar local indisponível. Escolha Downloads do navegador ou instale o auxiliar para selecionar outra pasta.');
 }
 async function chooseSaveDestination(remember=false){
  if(!nativeDestination)return {mode:'ask'};
@@ -44,17 +50,12 @@ async function chooseSaveDestination(remember=false){
 $('destination-choose').onclick=()=>action(async()=>{
  const chosen=await chooseSaveDestination(true);
  if(!chosen||chosen.mode!=='folder')return;
- $('destination-browser').checked=false;
- await chrome.storage.local.set({destinationBrowser:false});
  await refreshDestination();
 });
 $('destination-browser').onchange=()=>action(async()=>{
- await chrome.storage.local.set({destinationBrowser:$('destination-browser').checked});
+ await askWorker('destination-browser',{enabled:$('destination-browser').checked});
  await refreshDestination();
 });
-$('destination-settings').ontoggle=()=>{
- if($('destination-settings').open)refreshDestination().catch(report);
-};
 function currentImageSize(){return $('web-image-filter').checked?(imageSizes[Number($('web-image-size').value)]||600):0;}
 function syncOverlay(){
  if(!tabId)return;
@@ -514,7 +515,7 @@ $('download-notifications').onchange=event=>{
 };
 for(const id of ['web-image-interface','web-image-filter','web-image-size','min-width','min-height'])
  $(id).addEventListener('change',persistHoverFilters);
-chrome.storage.local.get(['webHoverOptions','webHoverDisabled','destinationBrowser']).then(settings=>{
+chrome.storage.local.get(['webHoverOptions','webHoverDisabled']).then(settings=>{
  const filters=settings.webHoverOptions;
  if(filters){
   $('web-image-filter').checked=!!filters.minimum;
@@ -525,9 +526,8 @@ chrome.storage.local.get(['webHoverOptions','webHoverDisabled','destinationBrows
   $('web-image-interface').checked=filters.includeInterface===true;
  }
  hoverDisabled=settings.webHoverDisabled||{};
- $('destination-browser').checked=settings.destinationBrowser===true;
  syncHoverSite(hoverHost);
  updateImageSize();
  renderGrid();
 }).catch(report);
-refreshTransfers();refresh();setInterval(()=>{refreshTransfers();refresh();},1500);
+refreshDestination().catch(report);refreshTransfers();refresh();setInterval(()=>{refreshTransfers();refresh();},1500);

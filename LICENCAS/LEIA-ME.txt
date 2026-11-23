@@ -1,6 +1,21 @@
-Dependências incluídas localmente:
+Dependências incluídas localmente e registradas em package-lock.json:
+
+Produção:
 @ffmpeg/core 0.12.10 — GPL-2.0-or-later (código-fonte e instruções: https://github.com/ffmpegwasm/ffmpeg.wasm)
 @ffmpeg/ffmpeg 0.12.15 — MIT (ffmpeg-wasm-MIT.txt)
-m3u8-parser 7.2.0 e mpd-parser 1.3.1 — Apache-2.0 (licenças incluídas)
-@babel/runtime, @videojs/vhs-utils, global e @xmldom/xmldom — MIT (licenças incluídas).
-O arquivo streams.js é gerado a partir de fonte/streams-entry.js e das dependências mencionadas.
+@ffmpeg/types 0.12.4 — MIT
+m3u8-parser 7.2.0 — Apache-2.0
+mpd-parser 1.3.1 — Apache-2.0
+@babel/runtime 7.29.14 — MIT
+@videojs/vhs-utils 4.1.3 — MIT
+@xmldom/xmldom 0.8.15 — MIT
+global 4.4.0 — MIT
+dom-walk 0.1.2 — MIT
+min-document 2.19.2 — MIT
+process 0.11.10 — MIT
+
+Build:
+esbuild 0.28.2 — MIT (dependência de desenvolvimento; não é carregada pela extensão)
+
+O arquivo streams.js é gerado a partir de fonte/streams-entry.js com `npm ci` e `npm run build:streams`.
+O núcleo WebAssembly segue a licença do FFmpeg e das bibliotecas compiladas nele. Não declare a build combinada como exclusivamente MIT. Consulte os avisos em LICENCAS/ e os metadados travados em package-lock.json antes de redistribuir.

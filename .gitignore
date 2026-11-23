@@ -1,4 +1,5 @@
 .DS_Store
+node_modules/
 __pycache__/
 *.py[cod]
 *.log
@@ -9,4 +10,3 @@ Mídias/
 downloads/
 ARQUITETURA.md
 ESTADO_E_CONTINUIDADE.md
-MATRIZ_PARIDADE.md

@@ -5,14 +5,22 @@ import binascii
 import contextlib
 import ctypes
 import hashlib
+import hmac
+import http.client
+import http.server
+import ipaddress
 import fcntl
 import json
 import math
 import os
 import pathlib
 import re
+import select
+import secrets
 import shutil
 import signal
+import socket
+import socketserver
 import stat
 import struct
 import subprocess
@@ -60,14 +68,298 @@ def read_message():
     return result
 
 
+def public_addresses(host, port):
+    """Resolve once, reject non-public answers, and return addresses to pin."""
+    if not isinstance(host, str) or not host or "%" in host or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError("Destino de rede inválido.")
+    host = host.rstrip(".")
+    try:
+        literal = ipaddress.ip_address(host)
+        addresses = [(socket.AF_INET6 if literal.version == 6 else socket.AF_INET,
+                      socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (str(literal), port, 0, 0)
+                      if literal.version == 6 else (str(literal), port))]
+    except ValueError:
+        try:
+            ascii_host = host.encode("idna").decode("ascii")
+            addresses = socket.getaddrinfo(ascii_host, port, type=socket.SOCK_STREAM)
+        except (UnicodeError, OSError):
+            raise ValueError("O destino não pôde ser validado como endereço público.") from None
+    if not addresses:
+        raise ValueError("O destino não pôde ser validado como endereço público.")
+    # Reject mixed public/private DNS answers too; otherwise DNS rotation could
+    # select an internal address after a preflight check.
+    try:
+        for family, _, _, _, sockaddr in addresses:
+            address = ipaddress.ip_address(sockaddr[0])
+            translated_ipv6 = address.version == 6 and (
+                address.ipv4_mapped is not None or address.sixtofour is not None or address.teredo is not None or
+                address in ipaddress.ip_network("64:ff9b::/96") or address in ipaddress.ip_network("64:ff9b:1::/48")
+            )
+            if not address.is_global or address.is_multicast or address.is_unspecified or translated_ipv6:
+                raise ValueError("Acesso a endereços locais ou privados não é permitido.")
+            if family not in (socket.AF_INET, socket.AF_INET6):
+                raise ValueError("Família de rede não permitida.")
+    except (IndexError, TypeError, ValueError) as error:
+        if isinstance(error, ValueError) and str(error).startswith("Acesso a endereços"):
+            raise
+        raise ValueError("O destino não pôde ser validado como endereço público.") from None
+    return addresses
+
+
+def connect_public(host, port, timeout=30):
+    """Connect to one of the already validated IPs, without a second DNS lookup."""
+    failures = []
+    for family, socktype, proto, _, sockaddr in public_addresses(host, port):
+        connection = socket.socket(family, socktype, proto)
+        connection.settimeout(timeout)
+        try:
+            connection.connect(sockaddr)
+            return connection
+        except OSError as error:
+            failures.append(error)
+            connection.close()
+    raise ValueError("Não foi possível conectar ao endereço público.") from (failures[-1] if failures else None)
+
+
+def validate_public_http_url(value):
+    if not isinstance(value, str) or len(value) > 8192:
+        raise ValueError("Endereço de mídia inválido.")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Endereço de mídia inválido.")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        public_addresses(parsed.hostname, port)
+    except ValueError as error:
+        if str(error).startswith(("Acesso a endereços", "O destino", "Família de rede")):
+            raise
+        raise ValueError("Endereço de mídia inválido.") from None
+    return value
+
+
+class PublicHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        if self._tunnel_host:
+            raise ValueError("Túneis HTTP locais não são permitidos.")
+        self.sock = connect_public(self.host, self.port, self.timeout)
+
+
+class PublicHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        if self._tunnel_host:
+            raise ValueError("Túneis HTTPS locais não são permitidos.")
+        connection = connect_public(self.host, self.port, self.timeout)
+        try:
+            self.sock = self._context.wrap_socket(connection, server_hostname=self.host)
+        except Exception:
+            connection.close()
+            raise
+
+
+class PublicHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, request):
+        return self.do_open(PublicHTTPConnection, request)
+
+
+class PublicHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, request):
+        return self.do_open(PublicHTTPSConnection, request, context=self._context)
+
+
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if urllib.parse.urlsplit(newurl).scheme not in ("http", "https"):
-            raise ValueError("Redirecionamento de mídia inválido.")
+        validate_public_http_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-OPENER = urllib.request.build_opener(SafeRedirect())
+OPENER = urllib.request.build_opener(PublicHTTPHandler(), PublicHTTPSHandler(), SafeRedirect())
+
+
+class PublicProxyHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    MAX_REQUEST_BODY = 16 * 1024 * 1024
+
+    def log_message(self, *_args):
+        # Native Messaging stdout is protocol data; never log requested URLs.
+        return
+
+    def _deny_destination(self):
+        self.server.denied_requests += 1
+        self.send_error(403, "Destino de rede não permitido")
+
+    def _authorized(self):
+        token = self.server.proxy_token
+        expected = "Basic " + base64.b64encode(f"{token}:{token}".encode()).decode("ascii")
+        if hmac.compare_digest(self.headers.get("Proxy-Authorization", ""), expected):
+            return True
+        self.send_response(407)
+        self.send_header("Proxy-Authenticate", 'Basic realm="Media Collector local proxy"')
+        self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        self.end_headers()
+        return False
+
+    def _authority(self, target):
+        if target.startswith("["):
+            end = target.find("]")
+            if end < 0 or target[end + 1:end + 2] != ":":
+                raise ValueError("Destino de proxy inválido.")
+            host, port_text = target[1:end], target[end + 2:]
+        else:
+            host, separator, port_text = target.rpartition(":")
+            if not separator:
+                raise ValueError("Destino de proxy inválido.")
+        if not port_text.isdecimal():
+            raise ValueError("Destino de proxy inválido.")
+        port = int(port_text)
+        public_addresses(host, port)
+        return host, port
+
+    def do_CONNECT(self):
+        if not self._authorized():
+            return
+        upstream = None
+        established = False
+        try:
+            host, port = self._authority(self.path)
+            upstream = connect_public(host, port, timeout=30)
+            self.send_response(200, "Connection Established")
+            self.end_headers()
+            established = True
+            self.close_connection = True
+            self._tunnel(upstream)
+        except (OSError, ValueError):
+            if upstream:
+                upstream.close()
+            if not established:
+                self._deny_destination()
+
+    def _tunnel(self, upstream):
+        peers = (self.connection, upstream)
+        try:
+            while True:
+                readable, _, exceptional = select.select(peers, (), peers, 60)
+                if exceptional or not readable:
+                    return
+                for source in readable:
+                    data = source.recv(65536)
+                    if not data:
+                        return
+                    target = upstream if source is self.connection else self.connection
+                    target.sendall(data)
+        except OSError:
+            return
+        finally:
+            upstream.close()
+
+    def _copy_exact(self, source, target, size):
+        copied = 0
+        while copied < size:
+            chunk = source.read(min(65536, size - copied))
+            if not chunk:
+                raise ValueError("Corpo de solicitação incompleto.")
+            target.sendall(chunk)
+            copied += len(chunk)
+
+    def _copy_chunked_request(self, upstream):
+        total = 0
+        while True:
+            line = self.rfile.readline(8193)
+            if not line or len(line) > 8192:
+                raise ValueError("Solicitação chunked inválida.")
+            upstream.sendall(line)
+            size_text = line.split(b";", 1)[0].strip()
+            try:
+                size = int(size_text, 16)
+            except ValueError:
+                raise ValueError("Solicitação chunked inválida.") from None
+            if size < 0 or total + size > self.MAX_REQUEST_BODY:
+                raise ValueError("Corpo de solicitação excede o limite.")
+            if size == 0:
+                while True:
+                    trailer = self.rfile.readline(8193)
+                    if not trailer or len(trailer) > 8192:
+                        raise ValueError("Trailer de solicitação inválido.")
+                    upstream.sendall(trailer)
+                    if trailer in (b"\r\n", b"\n"):
+                        return
+            self._copy_exact(self.rfile, upstream, size + 2)
+            total += size
+
+    def _forward_http(self):
+        if not self._authorized():
+            return
+        upstream = None
+        try:
+            parsed = urllib.parse.urlsplit(self.path)
+            if parsed.scheme != "http" or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError("Somente destinos HTTP(S) públicos são permitidos.")
+            port = parsed.port or 80
+            upstream = connect_public(parsed.hostname, port, timeout=30)
+            path = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
+            transfer_encoding = self.headers.get("Transfer-Encoding", "").strip().lower()
+            content_length = self.headers.get("Content-Length")
+            if transfer_encoding and content_length:
+                raise ValueError("Cabeçalhos de solicitação inconsistentes.")
+            if transfer_encoding not in ("", "chunked"):
+                raise ValueError("Codificação de solicitação não suportada.")
+            if content_length:
+                if not content_length.isdecimal() or int(content_length) > self.MAX_REQUEST_BODY:
+                    raise ValueError("Corpo de solicitação excede o limite.")
+            if self.headers.get("Expect", "").lower() == "100-continue":
+                self.connection.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
+            upstream.sendall(f"{self.command} {path} HTTP/1.1\r\n".encode("ascii"))
+            for key, value in self.headers.items():
+                if key.lower() not in {"proxy-authorization", "proxy-connection", "connection", "keep-alive", "expect"}:
+                    upstream.sendall(f"{key}: {value}\r\n".encode("latin-1"))
+            upstream.sendall(b"Connection: close\r\n\r\n")
+            if transfer_encoding == "chunked":
+                self._copy_chunked_request(upstream)
+            elif content_length:
+                self._copy_exact(self.rfile, upstream, int(content_length))
+            self.close_connection = True
+            while True:
+                data = upstream.recv(65536)
+                if not data:
+                    break
+                self.connection.sendall(data)
+        except (OSError, UnicodeError, ValueError):
+            if not self.wfile.closed:
+                self._deny_destination()
+        finally:
+            if upstream:
+                upstream.close()
+
+    do_GET = _forward_http
+    do_HEAD = _forward_http
+    do_POST = _forward_http
+    do_PUT = _forward_http
+    do_PATCH = _forward_http
+    do_DELETE = _forward_http
+    do_OPTIONS = _forward_http
+
+
+class PublicOnlyProxy:
+    """Per-job loopback proxy that allows only pinned, globally routable IPs."""
+    def __init__(self):
+        handler = PublicProxyHandler
+        self.server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), handler, bind_and_activate=True)
+        self.server.daemon_threads = True
+        self.server.block_on_close = False
+        self.server.proxy_token = secrets.token_urlsafe(32)
+        self.server.denied_requests = 0
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        host, port = self.server.server_address
+        return f"http://{self.server.proxy_token}:{self.server.proxy_token}@{host}:{port}"
+
+    def __exit__(self, *_args):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
 
 
 def binary(name):
@@ -133,10 +425,8 @@ def ffmpeg_run(job, ffmpeg, args, duration, phase):
 
 
 def download(job, part, file, totals, seen_resources):
-    url = part.get("url")
+    url = validate_public_http_url(part.get("url"))
     parsed = urllib.parse.urlsplit(url or "")
-    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError("Endereço de mídia inválido.")
     headers = {"Accept-Encoding": "identity"}
     range_ = part.get("range")
     if range_ is not None:
@@ -868,12 +1158,12 @@ def yt_process(job, args, stdout):
 
 
 def page_url(value):
-    if not isinstance(value, str) or len(value) > 8192:
-        raise ValueError("Endereço de página inválido.")
-    parsed = urllib.parse.urlsplit(value)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError("Endereço de página inválido.")
-    return value
+    try:
+        return validate_public_http_url(value)
+    except ValueError as error:
+        if str(error).startswith("Acesso a endereços"):
+            raise ValueError("Análise de páginas locais ou privadas não é permitida.") from None
+        raise ValueError("Endereço de página inválido ou não público.") from None
 
 
 def finish_page_job(job, event):
@@ -890,12 +1180,19 @@ def eligible_video_size(width, height):
 
 
 def run_page_job(job, payload):
+    proxy = None
     try:
         ytdlp, ffmpeg, ffprobe = binary("yt-dlp"), binary("ffmpeg"), binary("ffprobe")
         if not ytdlp or not ffmpeg or not ffprobe:
             raise ValueError("Instale yt-dlp, FFmpeg e ffprobe para analisar páginas.")
         url = page_url(payload.get("url"))
-        args = [ytdlp, "--ignore-config", "--no-playlist", "--no-warnings", "--ffmpeg-location", ffmpeg]
+        proxy = PublicOnlyProxy()
+        proxy_url = proxy.__enter__()
+        # Route HTTP(S) retrieval through a per-job proxy that resolves and pins
+        # public addresses. The native downloader fails closed for protocols
+        # that cannot use this HTTP(S)-only network boundary.
+        args = [ytdlp, "--ignore-config", "--no-playlist", "--no-warnings",
+                "--ffmpeg-location", ffmpeg, "--proxy", proxy_url, "--downloader", "native"]
         if payload["action"] == "page-analyze":
             send({"id": job["id"], "event": "started"})
             with tempfile.TemporaryFile(mode="w+b") as output:
@@ -1004,6 +1301,8 @@ def run_page_job(job, payload):
         with STATE_LOCK:
             if active is job:
                 active = None
+        if proxy:
+            proxy.__exit__(None, None, None)
 
 
 def main():

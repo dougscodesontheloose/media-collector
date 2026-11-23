@@ -19,6 +19,7 @@ test('fila encaminha faixas ao auxiliar e registra sucesso verificado', async ()
   offscreen:{async hasDocument(){return true;}},
   runtime:{onMessage:event('message'),onStartup:event('startup'),onInstalled:event('installed'),
    async sendMessage(message){assert.equal(message.action,'native-resolve');return {tracks:[[{url:'https://media.test/clip.mp4'}]]};},
+   async sendNativeMessage(name,message){assert.equal(name,'com.media_collector.processor');assert.equal(message.action,'destination-get');return {event:'done'};},
    connectNative(name){assert.equal(name,'com.media_collector.processor');return port;}},
   downloads:{onChanged:event('changed')},action:{onClicked:event('click')},scripting:{}
  };

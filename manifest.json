@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Media Collector",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "Colete fotos e v\u00eddeos na aba aberta, com processamento local.",
   "permissions": [
     "scripting",

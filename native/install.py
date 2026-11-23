@@ -8,12 +8,17 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--extension-id', required=True, help='ID exibido na página de extensões')
-parser.add_argument('--browser', required=True, choices=['chrome','comet'])
+parser.add_argument(
+    '--browser', required=True, choices=['chrome', 'brave', 'comet'],
+    help='Navegador alvo (no macOS, Brave e Chrome compartilham este registro)',
+)
 args = parser.parse_args()
 if not re.fullmatch('[a-p]{32}', args.extension_id):
     parser.error('O ID da extensão deve conter 32 letras entre a e p.')
 base = pathlib.Path.home() / 'Library' / 'Application Support'
-# O Comet no macOS consulta o mesmo diretório que o Chrome.
+# No macOS, Brave define DIR_USER_NATIVE_MESSAGING para o diretório padrão do
+# Chrome; manter um único manifesto evita registros divergentes entre os dois.
+# O Comet também usa este caminho nesta instalação.
 folder = base / 'Google' / 'Chrome' / 'NativeMessagingHosts'
 folder.mkdir(parents=True, exist_ok=True)
 source = pathlib.Path(__file__).resolve().with_name('host.py')

@@ -211,19 +211,45 @@ async function nativeRequest(action, data = {}) {
  }
  return reply;
 }
-let defaultDestination;
+const destinationPreferenceKey='downloadDestination';
+function savedDestination(settings){
+ const saved=settings?.[destinationPreferenceKey];
+ if(saved?.mode==='browser')return {mode:'browser',explicit:true};
+ if(saved?.mode==='folder'&&typeof saved.token==='string'&&saved.token)
+  return {mode:'folder',token:saved.token,folder:typeof saved.folder==='string'?saved.folder:''};
+ if(settings?.destinationBrowser===true)return {mode:'browser',explicit:true};
+ return null;
+}
+async function persistentDestination(){
+ const settings=await chrome.storage.local.get([destinationPreferenceKey,'destinationBrowser']);
+ const saved=savedDestination(settings);
+ if(saved)return saved;
+ try{
+  const result=await nativeRequest('destination-get');
+  if(result?.destination){
+   const destination={mode:'folder',token:result.destination,folder:result.folder||''};
+   await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:false});
+   return destination;
+  }
+ }catch(error){
+  // Older installs wrote false when a custom destination was selected. Never
+  // silently redirect that explicit preference to the browser Downloads folder.
+  if(settings.destinationBrowser===false)
+   throw Error('O auxiliar local está indisponível para o destino configurado. Reinstale ou reconecte o auxiliar, ou escolha Downloads do navegador no painel.');
+ }
+ // This is only the fallback when there is no saved destination preference.
+ // Keep it non-explicit so the user can still opt into local processing for
+ // this queue; an explicitly selected browser destination is stored above.
+ const destination={mode:'browser'};
+ await chrome.storage.local.set({[destinationPreferenceKey]:destination});
+ return destination;
+}
 async function destinationFor(req, sender) {
  const fromPanel = sender.url?.startsWith(chrome.runtime.getURL(''));
  if (fromPanel && req.destination?.mode === 'browser') return {mode:'browser',explicit:true};
  if (fromPanel && req.destination?.mode === 'ask') return {mode:'ask'};
  if (fromPanel && req.destination?.mode === 'folder' && typeof req.destination.token === 'string') return req.destination;
- const {destinationBrowser}=await chrome.storage.local.get(['destinationBrowser']);
- if (destinationBrowser===true) return {mode:'browser',explicit:true};
- if (defaultDestination) return defaultDestination;
- const result = await nativeRequest('destination-get').catch(() => null);
- if (!result?.destination) return {mode:'browser'};
- defaultDestination = {mode:'folder',token:result.destination,folder:result.folder};
- return defaultDestination;
+ return persistentDestination();
 }
 function downloadOptions(current, filename, url) {
  const options = {url,filename,conflictAction:'uniquify',saveAs:current.item.destination?.mode === 'ask'};
@@ -536,19 +562,32 @@ function newMedia(req,history,seen=new Set(),destination={mode:'browser'}){
  return selected;
 }
 async function handle(req,sender){
- if(['destination-get','destination-choose','destination-reveal','destination-retry'].includes(req.action)){
+ if(['destination-get','destination-choose','destination-browser','destination-reveal','destination-retry'].includes(req.action)){
   if(!sender.url?.startsWith(chrome.runtime.getURL('')))throw Error('Abra o painel para alterar o destino.');
   if(req.action==='destination-get'){
-   const result=await nativeRequest('destination-get').catch(()=>null);
-   defaultDestination=result?.destination?{mode:'folder',token:result.destination,folder:result.folder}:null;
-   return {available:!!defaultDestination,destination:defaultDestination||{mode:'browser'}};
+   let destination,errorMessage;
+   try{destination=await persistentDestination();}catch(error){errorMessage=err(error);}
+   let available=false;
+   try{await nativeRequest('destination-get');available=true;}catch{}
+   return {available,destination:destination||null,error:errorMessage};
   }
   if(req.action==='destination-choose'){
    const chosen=await nativeRequest('destination-choose',{remember:req.remember===true});
    if(!chosen)return {cancelled:true};
    const destination={mode:'folder',token:chosen.destination,folder:chosen.folder};
-   if(req.remember)defaultDestination=destination;
+   if(req.remember)await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:false});
    return {destination};
+  }
+  if(req.action==='destination-browser'){
+   if(typeof req.enabled!=='boolean')throw Error('Escolha um destino válido.');
+   const destination=req.enabled?{mode:'browser',explicit:true}:null;
+   if(destination)await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:true});
+   else{
+    await chrome.storage.local.set({destinationBrowser:false});
+    const settings=await chrome.storage.local.get([destinationPreferenceKey]);
+    if(settings[destinationPreferenceKey]?.mode==='browser')await chrome.storage.local.remove(destinationPreferenceKey);
+   }
+   return {ok:true};
   }
   if(req.action==='destination-reveal'){
    const {transfers={},job}=await chrome.storage.local.get(['transfers','job']);

@@ -4,3 +4,5 @@
 #web-image-size-label{color:#e7b2ae;font-weight:650}
 
 [hidden]{display:none!important}
+
+.destination-card{border:1px solid #edb7b52e;border-radius:12px;background:#201117bd;padding:12px 13px;box-shadow:inset 0 1px #fff1}.destination-heading{display:flex;align-items:center;justify-content:space-between;color:#d49c99}.destination-card h2{margin-top:5px}.destination-card #destination-status{overflow-wrap:anywhere;margin-bottom:7px}.destination-card .destination-note{margin:7px 0 0;font-size:9px}.destination-card .check{margin-bottom:0}
