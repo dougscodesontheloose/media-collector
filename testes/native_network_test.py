@@ -108,8 +108,9 @@ class NativeNetworkTests(unittest.TestCase):
         proxy_url = proxy.__enter__()
         self.addCleanup(proxy.__exit__, None, None, None)
         opener = host.urllib.request.build_opener(host.urllib.request.ProxyHandler({"http": proxy_url}))
-        with self.assertRaises(host.urllib.error.HTTPError) as result:
-            opener.open("http://127.0.0.1:8123/private", timeout=3)
+        with mock.patch.object(host.urllib.request, "proxy_bypass", return_value=False):
+            with self.assertRaises(host.urllib.error.HTTPError) as result:
+                opener.open("http://127.0.0.1:8123/private", timeout=3)
         self.assertEqual(result.exception.code, 403)
         result.exception.close()
         self.assertEqual(proxy.server.denied_requests, 1)
