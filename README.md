@@ -1,6 +1,6 @@
 # Media Collector
 
-Extensão experimental Manifest V3 para Chromium que ajuda a localizar e salvar fotos, vídeos e áudio que uma página já disponibiliza ao navegador. O processamento e o histórico são locais. O projeto não inclui telemetria, analytics, rastreamento, coleta remota de dados ou serviço externo de extração.
+Extensão experimental de coleta de mídia para navegadores Chromium e, em desenvolvimento, Safari no macOS. Ela ajuda a localizar e salvar fotos, vídeos e áudio que uma página já disponibiliza ao navegador. O processamento e o histórico são locais. O projeto não inclui telemetria, analytics, rastreamento, coleta remota de dados ou serviço externo de extração.
 
 **Repositório:** <https://github.com/dougscodesontheloose/media-collector> · **Versão:** 5.3.0 · **Estado:** candidata experimental; a cobertura varia por site e formato. Consulte a [especificação funcional](#especificação-funcional-consolidada) e a [validação atual](#validação-e-limites-conhecidos).
 
@@ -92,6 +92,19 @@ Uma capacidade só deve ser marcada **Validada** quando testada na versão ident
 | Privacidade | Revisar permissões, dependências, tráfego, logs, estado local, auxiliar e ausência de telemetria/código remoto; repetir testes de restrição de rede documentados em `SECURITY.md`. |
 
 A validação prática desta rodada deve usar o perfil real do Chrome ou Brave que o usuário apontar, inclusive se estiver autenticado. Não criar perfis isolados. Resultados de sessões isoladas anteriores são somente evidência histórica; não substituem a validação no navegador escolhido para esta rodada.
+
+## Safari no macOS
+
+O repositório inclui um alvo nativo inicial em [`platforms/safari/`](platforms/safari/README.md), gerado com as ferramentas oficiais da Apple. Ele reutiliza a interface e os detectores web do Media Collector, com um manifesto próprio e uma ponte Swift para as capacidades que não existem no Safari.
+
+Estado da primeira etapa:
+
+- o projeto Xcode compila para macOS e o manifesto adaptado passa pelo `safari-web-extension-packager` sem avisos de chaves incompatíveis;
+- imagens, áudio e vídeos com URL HTTP(S) direta têm um caminho nativo inicial para `Downloads/Media Collector`;
+- HLS/DASH, MSE/`blob:`, escolha persistente de pasta, pausa/retomada e paridade completa com o auxiliar Chromium ainda não estão concluídos nem validados no Safari;
+- o alvo Safari não introduz telemetria, backend, importação de cookies ou código remoto.
+
+Para abrir a versão de desenvolvimento, use o projeto `platforms/safari/Media Collector/Media Collector.xcodeproj` no Xcode. As instruções de sincronização, compilação e ativação estão no README específico da plataforma. Esse alvo é uma base funcional de portabilidade, não uma versão estável equivalente ao Chromium.
 
 ## Instalar no Chrome ou Brave
 
