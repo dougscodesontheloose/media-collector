@@ -298,6 +298,20 @@ test('download direto rejeita HTML e arquivo com tamanho diferente do confirmado
   }
 });
 
+test('download direto de áudio aceita audio/mpeg e preserva o nome MP3',async()=>{
+ const h=harness();
+ const audio={...item(1,'https://cdn.test/faixa.mp3?token=temporario'),kind:'audio',format:'direct',mime:'audio/mpeg',expectedBytes:64};
+ await h.request('download',{items:[audio],outputFormat:'audio-original',destination:{mode:'browser'}},panelSender);
+ const entry=h.entries.get(1);
+ assert.match(entry.opt.filename,/\.mp3$/);
+ Object.assign(entry,{filename:'/Downloads/'+entry.opt.filename,byExtensionId:'teste',mime:'audio/mpeg',fileSize:64,bytesReceived:64});
+ await h.changed(1,'complete');
+ const state=await h.request('status');
+ assert.equal(state.job.done,1);
+ assert.equal(state.job.failed,0);
+ assert.equal(state.transfers[transferKey(audio.url,'audio-original')].state,'saved');
+});
+
 function nativeStreamFixture(h,options={}){
  const sent=[], listeners=new Set(),disconnect=new Set();let count=0;
  const port={onMessage:{addListener:f=>listeners.add(f),removeListener:f=>listeners.delete(f)},onDisconnect:{addListener:f=>disconnect.add(f),removeListener:f=>disconnect.delete(f)},disconnect(){},postMessage(m){
@@ -312,6 +326,18 @@ async function until(check){for(let i=0;i<100;i++){if(await check())return;await
 function xVideo(){return {...item(1,'https://video.twimg.com/x.mp4'),site:'x.com',kind:'video',format:'direct',mp4Direct:true,expectedBytes:4};}
 const folderRequest={destination:{mode:'folder',token:'documents'}};
 const panelSender={url:'chrome-extension://teste/panel.html'};
+test('stream de áudio direto envia tipo e extensão de origem ao auxiliar',async()=>{
+ const h=harness(),native=nativeStreamFixture(h);
+ const audio={...item(1,'https://cdn.test/faixa.mp3'),site:'news.example',kind:'audio',format:'direct',expectedBytes:4};
+ h.context.fetch=async()=>new Response(Buffer.from('data'),{headers:{'content-type':'audio/mpeg','content-length':'4'}});
+ await h.request('download',{items:[audio],outputFormat:'audio-original',...folderRequest},panelSender);
+ await until(()=>native.sent.some(message=>message.action==='stream-start'));
+ const start=native.sent.find(message=>message.action==='stream-start');
+ assert.equal(start.kind,'audio');
+ assert.match(start.filename,/\.mp3$/);
+ await until(async()=>((await h.request('status')).job.status==='finished'));
+ assert.equal((await h.request('status')).job.done,1);
+});
 function processedJob(){
  const media={...xVideo(),format:'hls',output:'mp4',destination:{mode:'folder',token:'documents'},expectedBytes:99};
  return {status:'running',items:[media],next:1,done:0,failed:0,errors:[],current:{item:media,index:0,token:'processador',stageId:'12345678-1234-1234-1234-123456789abc'},total:1};

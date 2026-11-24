@@ -313,22 +313,28 @@ async function probeDirectLength(url) {
 }
 function completeDirectFile(current, download) {
  if (!current.direct) return;
- if(!download)throw Error('O navegador não encontrou o vídeo transferido.');
+ const isAudio=current.item.kind==='audio';
+ const mediaName=isAudio?'áudio':'vídeo';
+ if(!download)throw Error(`O navegador não encontrou o ${mediaName} transferido.`);
  const mime = download.mime?.split(';')[0].trim().toLowerCase();
- if (mime && !['video/mp4','video/x-m4v','application/mp4','application/octet-stream','binary/octet-stream'].includes(mime))
-  throw Error('O servidor devolveu outro tipo de arquivo. Atualize a fonte do vídeo e tente novamente.');
+ const genericBinary=['application/octet-stream','binary/octet-stream'];
+ const validAudioMime=mime?.startsWith('audio/')||mime==='application/ogg'||genericBinary.includes(mime);
+ const validVideoMime=['video/mp4','video/x-m4v','application/mp4',...genericBinary].includes(mime);
+ if (mime && !(isAudio?validAudioMime:validVideoMime))
+  throw Error(`O servidor devolveu outro tipo de arquivo. Atualize a fonte do ${mediaName} e tente novamente.`);
  const expected = current.item.expectedBytes;
  const actual = download.fileSize >= 0 ? download.fileSize : download.bytesReceived;
  if(actual===0)
-  throw Error('A transferência terminou com um vídeo incompleto. Atualize a fonte e tente novamente.');
+  throw Error(`A transferência terminou com um ${mediaName} incompleto. Atualize a fonte e tente novamente.`);
  if(Number.isSafeInteger(expected)&&(!Number.isFinite(actual)||actual!==expected))
   throw Error('O tamanho do arquivo não corresponde à resposta da fonte. Atualize a lista e tente novamente.');
 }
 async function publishCurrent(current, download) {
  if (!download?.filename || (download.byExtensionId && download.byExtensionId !== chrome.runtime.id))
   throw Error('O arquivo temporário desta transferência não foi encontrado.');
+ const directExtension=current.direct?(current.item.kind==='audio'?MediaCore.extension(current.item):'mp4'):undefined;
  const path = MediaCore.filename({...current.item,forceExtension:current.extension ||
-  (current.direct ? 'mp4' : MediaCore.imageExtension(download.mime)) || undefined},current.index);
+  (directExtension || MediaCore.imageExtension(download.mime)) || undefined},current.index);
  const [,category,filename] = path.split('/');
  const payload = {id:current.stageId,source:download.filename,filename,category,
   destination:current.item.destination.token,kind:current.item.kind,
