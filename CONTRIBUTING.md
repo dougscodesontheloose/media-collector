@@ -8,7 +8,7 @@ Contribuições pequenas e verificáveis são bem-vindas. Antes de abrir uma iss
 
    ```sh
    node --test testes/*.test.js
-   python3 -B testes/native_destination_test.py
+   python3 -B -m unittest discover -s testes -p '*_test.py'
    ```
 
 4. Mantenha os adaptadores de sites isolados e evite registrar URLs completas ou dados de sessão em logs.

@@ -172,7 +172,7 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-OPENER = urllib.request.build_opener(PublicHTTPHandler(), PublicHTTPSHandler(), SafeRedirect())
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), PublicHTTPHandler(), PublicHTTPSHandler(), SafeRedirect())
 
 
 class PublicProxyHandler(http.server.BaseHTTPRequestHandler):
@@ -745,6 +745,22 @@ def verify_staged(file, source, payload, filename):
             raise InvalidMedia("A duração do arquivo não corresponde à origem.")
 
 
+def cleanup_published_download(target, source_path, id_):
+    """Remove only staging files belonging to a confirmed publication."""
+    published = target.parent / (".media-collector-" + id_ + ".part")
+    try:
+        if not published.is_symlink() and published.is_file() and published.samefile(target):
+            published.unlink()
+    except OSError:
+        pass
+    try:
+        source = staging_source(source_path, id_)
+        source.unlink()
+        source.parent.rmdir()
+    except (OSError, InvalidMedia):
+        pass
+
+
 def publish_download(payload):
     id_ = task_id(payload.get("id"))
     filename = validate_filename(payload.get("filename"))
@@ -761,6 +777,7 @@ def publish_download(payload):
             if target.is_file() and not target.is_symlink():
                 info = target.stat()
                 if state.get("target_stat") == [info.st_dev, info.st_ino, info.st_size]:
+                    cleanup_published_download(target, source_path, id_)
                     return target
             raise ValueError("O arquivo salvo foi movido ou removido.")
         # Reconcile a crash after an atomic rename but before recording the result.
@@ -772,6 +789,7 @@ def publish_download(payload):
                 if current == state["source_stat"]:
                     state.update(target=str(candidate), target_stat=current)
                     persist(journal, state)
+                    cleanup_published_download(candidate, source_path, id_)
                     return candidate
         try:
             source = staging_source(source_path, id_)
@@ -823,15 +841,7 @@ def publish_download(payload):
         info = target.stat()
         state["target_stat"] = [info.st_dev, info.st_ino, info.st_size]
         persist(journal, state)
-        for item in (published, source):
-            try:
-                item.unlink()
-            except OSError:
-                pass
-        try:
-            source.parent.rmdir()
-        except OSError:
-            pass
+        cleanup_published_download(target, source_path, id_)
         return target
 
 

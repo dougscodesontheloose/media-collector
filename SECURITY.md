@@ -1,6 +1,6 @@
 # Segurança
 
-Media Collector 5.0.1 é uma build de desenvolvimento para Chromium. A extensão pede acesso amplo a páginas HTTP e HTTPS para localizar mídia na web aberta. O auxiliar nativo é opcional e, quando instalado, pode acessar a rede pública e gravar arquivos no destino escolhido.
+Media Collector 5.3.0 é uma candidata experimental para Chromium. A extensão pede acesso amplo a páginas HTTP e HTTPS para localizar mídia na web aberta. O auxiliar nativo é opcional e, quando instalado, pode acessar a rede pública e gravar arquivos no destino escolhido.
 
 ## Controles e limites
 

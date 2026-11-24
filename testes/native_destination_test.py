@@ -112,6 +112,17 @@ class NativeDestinationTests(unittest.TestCase):
         result = host.publish_download(request)
         self.assertEqual(result.read_bytes(), MP4_BOXES)
         self.assertEqual(len(list(result.parent.iterdir())), 1)
+        self.assertFalse(pathlib.Path(request["source"]).exists())
+        self.assertEqual(host.publish_download(request), result)
+
+    def test_retry_cleans_staging_after_journal_commit(self):
+        request = self.staged()
+        with mock.patch.object(host, "cleanup_published_download"):
+            result = host.publish_download(request)
+        self.assertTrue(pathlib.Path(request["source"]).exists())
+        self.assertEqual(host.publish_download(request), result)
+        self.assertFalse(pathlib.Path(request["source"]).exists())
+        self.assertEqual([item.name for item in result.parent.iterdir()], [result.name])
 
     def test_missing_ffprobe_does_not_claim_known_audio_or_duration(self):
         request = {**self.staged(), "kind": "video", "expectedAudio": True}

@@ -1,6 +1,6 @@
 # Matriz de absorção funcional — Media Collector
 
-Atualizada em 23/11/2026. **Estado geral: projeto aberto; paridade funcional não demonstrada.** A meta é combinar, numa extensão própria e privacy-first, as capacidades relevantes de Image Downloader, Plucker XBD, Turbo Downloader for Instagram e Video DownloadHelper. A comparação orienta engenharia independente; não copiamos código ou ativos proprietários. Esta matriz distingue funções anunciadas pelas quatro referências, observações feitas em versões instaladas e resultados realmente validados no Media Collector. Uma evidência vale somente para o cenário citado.
+Evidências registradas em 23 e 24/11/2026. **Estado geral: projeto aberto; paridade funcional não demonstrada.** A meta é combinar, numa extensão própria e privacy-first, as capacidades relevantes de Image Downloader, Plucker XBD, Turbo Downloader for Instagram e Video DownloadHelper. A comparação orienta engenharia independente; não copiamos código ou ativos proprietários. Esta matriz distingue funções anunciadas pelas quatro referências, observações feitas em versões instaladas e resultados realmente validados no Media Collector. Uma evidência vale somente para o cenário citado.
 
 ## Referências definidas pelo usuário
 
@@ -39,7 +39,7 @@ Essa composição é um objetivo de produto, não uma alegação de paridade já
 
 - Nesta fase, o QA de interface deve ocorrer no **Chrome** indicado pelo usuário, sem criar perfil isolado. Os resultados de perfis isolados nesta matriz são históricos; Brave, Comet e Vivaldi não são a linha de base desta rodada.
 - A captura enviada em 23/11 mostra no Brave as quatro extensões e as versões acima. A pasta local de extensões do Brave está protegida por permissões do macOS nesta sessão, então não foi possível conferir os manifestos dos pacotes instalados por leitura de disco.
-- Registros anteriores descrevem perfis temporários do Chrome/Brave e uma instância headless; são evidência histórica, não serão usados nesta rodada. O navegador apontado para a validação desta versão é o Brave no perfil habitual do usuário. Não criar outro perfil.
+- Registros anteriores descrevem perfis temporários do Chrome/Brave e uma instância headless; são evidência histórica e não substituem a validação no navegador indicado para a rodada atual.
 - Em 23/11, um perfil temporário do Brave 158 carregou a árvore atual e o painel focou a aba de fixture local. O service worker respondeu pelo Native Messaging com `pong` e `ffmpeg:true`. Depois, uma fila controlada enviada ao worker usou o caminho Native Messaging de stream e publicou a fixture em `Documents/Media Collector/Mídias/X.com` dentro de um `HOME` temporário. O MP4 final teve 194.664 bytes, SHA-256 igual à origem, H.264/AAC e 2 s. O rótulo `x.com` foi usado somente para acionar esse ramo; a origem HTTP era uma fixture em loopback. Nenhum login ou site externo foi usado.
 - O código-fonte oficial do Brave configura o Native Messaging no macOS para usar `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`, o mesmo caminho do instalador. O alias `--browser brave`, o manifesto registrado e o handshake foram confirmados. [Fonte do Brave](https://github.com/brave/brave-core/blob/master/app/brave_main_delegate.cc#L847-L888).
 - O painel do Brave detectou uma fixture MP4 direta 640×640; um clique real em “Baixar vídeo” concluiu a fila e o arquivo passou por hash e `ffprobe` (H.264/AAC, 2 s). O arquivo foi salvo temporariamente na pasta Downloads padrão do Brave porque `Browser.setDownloadBehavior` via CDP não redirecionou chamadas da API `chrome.downloads`; depois da validação, o arquivo foi removido. Uma invocação programática sem clique ficou `in_progress` com nome vazio, e o teste headless anterior retornou `USER_CANCELED`; esses resultados não substituem o teste de interface. A escolha persistente de pasta está visível no painel e salva em armazenamento local; falta validar por interação real e confirmar a persistência entre reinícios. Nenhum site externo ou sessão diária foi usado.
@@ -50,8 +50,8 @@ Essa composição é um objetivo de produto, não uma alegação de paridade já
 
 1. No navegador real que o usuário apontar, validar uma publicação autorizada no X com a revisão atual do bridge e comparar cenário equivalente com o Plucker; não inferir sucesso dos downloads históricos.
 2. Validar um vídeo de feed, Reel, Story e carrossel no Instagram e um post de vídeo/GIF do Reddit, registrando cada resultado e limitações da sessão.
-3. No Brave apontado pelo usuário, validar por interação do painel a escolha de uma pasta temporária e a publicação Native Messaging nessa pasta; o ramo de stream no destino padrão temporário já passou, mas a seleção persistente de pasta está implementada na versão 5.1.0 e falta validá-la por interação real.
-4. Validar pela interface a escolha de pasta personalizada e o destino “navegador”; verificar como o Brave aplica a pasta padrão sem usar CDP como redirecionador. Os resultados headless e chamadas sem clique não contam como validação do fluxo normal.
+3. No Chrome indicado pelo usuário, validar por interação do painel a escolha de uma pasta temporária e a publicação Native Messaging nessa pasta; o ramo de stream no destino padrão temporário passou em teste histórico, mas a seleção persistente de pasta ainda precisa de validação por interação real.
+4. Validar pela interface a escolha de pasta personalizada e o destino “navegador”; verificar como o navegador aplica a pasta padrão sem usar CDP como redirecionador. Os resultados headless e chamadas sem clique não contam como validação do fluxo normal.
 5. Auditar caminhos de rede fora dos fluxos HTTP(S) cobertos, validar regressões de compatibilidade após a barreira e confirmar que executáveis auxiliares não abrem conexões diretas fora do proxy; sem acessar redes privadas.
 6. Ampliar web aberta com `srcset`, lazy loading, imagens de hover, Fetch/XHR, iframes, Shadow DOM, HLS/DASH e áudio; validar codec, áudio, duração e integridade por amostra.
 7. Comparar no navegador apontado pelo usuário as quatro referências com cenários equivalentes: Image Downloader, Plucker XBD, Turbo Downloader for Instagram e Video DownloadHelper.
@@ -67,6 +67,6 @@ Essa composição é um objetivo de produto, não uma alegação de paridade já
 
 **A missão continua aberta.** O ciclo segue: investigar → comparar → especificar → implementar → testar → validar → registrar → escolher a próxima lacuna.
 
-## Continuidade local — 24/11/2026
+## Registro histórico — 24/11/2026
 
-A base de trabalho é `App/media-collector-v5-2-0`. A candidata 5.2 e a 5.1 comparadas tinham código idêntico e diferenças apenas nos três arquivos de versão. A auditoria das referências está em `App/QA`; é estática e não confirma tráfego em execução. Hover de thumbnails no YouTube e vídeos sociais nesta revisão ainda requerem validação no navegador real. Testes devem gravar em `App/QA/resultados`. Novos commits e publicações estão suspensos.
+Na comparação histórica, as candidatas 5.2 e 5.1 tinham código idêntico e diferenças nos três arquivos de versão. A auditoria das referências foi estática e não confirmou tráfego em execução. Hover de thumbnails no YouTube e vídeos sociais ainda requerem validação no navegador real.
