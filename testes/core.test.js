@@ -51,3 +51,12 @@ test('nomes permanecem estáveis com URLs assinadas e identificam a posição no
   assert.notEqual(C.basename({...video,url:'https://cdn.site.test/v/outro.mp4'}),name);
   assert.equal(C.basename({site:'instagram.com',page:'alice',post:'ABC-42',mediaPosition:2,kind:'image'}),'alice-foto-ABC-42-2.jpg');
 });
+
+test('áudio preserva a extensão da URL e deriva formatos comuns do MIME', () => {
+  assert.equal(C.extension({kind:'audio',url:'https://cdn.test/faixa.mp3?token=temporario'}),'mp3');
+  assert.equal(C.extension({kind:'audio',url:'https://cdn.test/faixa?format=m4a'}),'m4a');
+  assert.equal(C.extension({kind:'audio',url:'https://cdn.test/play',mime:'audio/mpeg; charset=binary'}),'mp3');
+  assert.equal(C.extension({kind:'audio',url:'https://cdn.test/play',mime:'audio/mp4'}),'m4a');
+  assert.equal(C.extension({kind:'audio',url:'https://cdn.test/play'}),'bin');
+  assert.match(C.filename({site:'news.example',page:'radio',kind:'audio',url:'https://cdn.test/faixa.mp3'}),/\.mp3$/);
+});

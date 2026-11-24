@@ -1,8 +1,8 @@
 # Media Collector
 
-Extensão experimental Manifest V3 para Chromium que ajuda a localizar e salvar fotos, vídeos e áudio que uma página já disponibiliza ao navegador. O processamento e o histórico são locais. O projeto não usa servidor próprio de extração, API oficial ou telemetria.
+Extensão experimental Manifest V3 para Chromium que ajuda a localizar e salvar fotos, vídeos e áudio que uma página já disponibiliza ao navegador. O processamento e o histórico são locais. O projeto não inclui telemetria, analytics, rastreamento, coleta remota de dados ou serviço externo de extração.
 
-**Repositório:** <https://github.com/dougscodesontheloose/media-collector> · **Versão:** 5.1.0 · **Estado:** build experimental; a cobertura varia por site e formato. Consulte a [especificação funcional](#especificação-funcional-consolidada), a [validação atual](#validação-e-limites-conhecidos) e a [matriz de paridade com as quatro referências](MATRIZ_PARIDADE.md).
+**Repositório:** <https://github.com/dougscodesontheloose/media-collector> · **Versão:** 5.3.0 · **Estado:** candidata experimental; a cobertura varia por site e formato. Consulte a [especificação funcional](#especificação-funcional-consolidada) e a [validação atual](#validação-e-limites-conhecidos).
 
 Use a extensão somente com conteúdo que você tenha direito de salvar e respeite as regras e permissões do site. Ela não contorna DRM, paywalls ou controles de acesso.
 
@@ -14,26 +14,24 @@ Use a extensão somente com conteúdo que você tenha direito de salvar e respei
 - Mantém um painel lateral para revisar candidatos, selecionar itens, acompanhar a fila e consultar falhas.
 - Identifica arquivos diretos e tenta processar manifestos HLS e DASH sob demanda, quando não criptografados e quando os dados disponíveis bastam para reconstruí-los.
 - Observa tráfego de mídia reconhecível e, por ação do usuário, pode tentar capturas temporárias de players MSE compatíveis.
-- Salva os arquivos localmente, com destino configurável. O auxiliar nativo opcional permite escolher uma pasta e analisar páginas usando ferramentas instaladas no computador.
+- Salva os arquivos localmente, com destino configurável e persistente. Com o auxiliar nativo, a pasta escolhida recebe os arquivos diretamente sem depender da preferência global “Perguntar onde salvar” do navegador; se a fonte não puder ser buscada localmente, a fila pede uma decisão antes de tentar pelo navegador.
 
 Esses recursos não garantem a captura de todos os itens de um perfil ou site. Links temporários, players fechados, formatos incompatíveis, expiração de URLs, conteúdo protegido e mudanças nas páginas podem impedir a detecção ou o download.
 
+
+## Privacidade e comunicação de rede
+
+Privacidade é um requisito do projeto. O Media Collector não tem conta, servidor do projeto, backend de extração, analytics, telemetria, rastreamento nem relatório de falhas remoto. Não envia URLs visitadas, histórico, conteúdo das páginas, nomes de arquivos, preferências ou resultados de downloads a serviços de métricas, diagnóstico ou extração. O código executável necessário à extensão é empacotado localmente; ela não baixa código remoto.
+
+Preferências, fila, histórico e observações temporárias ficam no armazenamento local do navegador. A extensão não pede senha, não usa a API de cookies e não exporta cookies, histórico ou cache. O auxiliar opcional também não importa cookies do navegador. A sessão que já está aberta pode ser usada pelo próprio navegador para carregar a página e, quando possível, baixar a mídia selecionada.
+
+**Limite de rede:** abrir páginas e buscar a mídia exige comunicação com o site que a publica e com os servidores/CDNs que a hospedam. O auxiliar local e ferramentas que você instalar, como `yt-dlp`, também podem fazer requisições diretamente a esses hosts. Eles recebem os metadados normais dessas requisições, como endereço IP e cabeçalhos HTTP, e podem manter seus próprios registros conforme as políticas deles. Esse tráfego é necessário para acessar a origem; o Media Collector não o encaminha por um servidor próprio nem o usa para telemetria.
+
+A versão 5.3.0 é uma candidata experimental e inclui ajustes no destino persistente e no fallback de downloads diretos. A cobertura varia por site e formato; a ausência de telemetria deve continuar sendo conferida em revisões futuras de código e dependências.
+
 ## Especificação funcional consolidada
 
-Esta seção registra o que o Media Collector **deve fazer** para orientar auditorias, correções e versões futuras. Ela consolida os pedidos do projeto e os comportamentos públicos que usamos como referência; não afirma que todas as capacidades já estejam implementadas ou validadas. O estado real por cenário fica em [Validação e limites conhecidos](#validação-e-limites-conhecidos) e na [matriz de paridade](MATRIZ_PARIDADE.md).
-
-### Como usar as quatro referências
-
-O objetivo é combinar capacidades úteis numa extensão própria, com uma única fila, painel, sistema de destino e modelo de privacidade. As referências funcionais são as versões observadas pelo usuário: [Image Downloader 4.5.12](https://chromewebstore.google.com/detail/image-downloader/cnpniohnfphhjihaiiggeabnkjhpaldj), [Plucker XBD 6.1](https://chromewebstore.google.com/detail/plucker-xbd-xtwitter-medi/piibekljdlkbkdchicfdjpnaggolndif), [Turbo Downloader for Instagram 4.12.16](https://chromewebstore.google.com/detail/turbo-downloader-for-inst/cpgaheeihidjmolbakklolchdplenjai) e [Video DownloadHelper 10.7.1.2](https://chromewebstore.google.com/detail/video-download-helper/lmjnegcaeklhafolokijcfjliaokphfk).
-
-| Referência | Capacidade que queremos incorporar por implementação independente |
-| --- | --- |
-| Image Downloader | Inventário de imagens, resolução de variantes, filtros por dimensões, prévia, seleção individual ou em lote e atalho de hover. |
-| Plucker XBD | Ação rápida junto a uma publicação do X, com a mídia associada ao post correto e sem confundir poster com vídeo. |
-| Turbo Downloader for Instagram | Ações em fotos, carrosséis, Reels e Stories, além de coleta em lote de conteúdo carregável de perfis, com progresso. |
-| Video DownloadHelper | Detecção ampla de vídeo e áudio em players, escolha de formato/qualidade, suporte a arquivos e streams e uso opcional de processamento local. |
-
-Essas referências orientam **o que observar e comparar**, não o código a copiar. Lojas, descrições e capturas registram recursos anunciados ou vistos; não provam todos os detalhes internos. Cada relatório deve separar requisitos, comportamento observado, hipótese técnica e resultado reproduzido no Media Collector. Não copiar código, ativos, identidade visual ou técnicas proprietárias. A [matriz](MATRIZ_PARIDADE.md) guarda as evidências comparativas disponíveis.
+Esta seção registra o que o Media Collector **deve fazer** para orientar auditorias, correções e versões futuras. Ela consolida os objetivos do produto e as decisões de arquitetura; não afirma que todas as capacidades já estejam implementadas ou validadas. O estado real por cenário fica em [Validação e limites conhecidos](#validação-e-limites-conhecidos).
 
 ### Requisitos de experiência e navegação
 
@@ -109,11 +107,13 @@ A validação prática desta rodada deve usar o perfil real do Chrome ou Brave q
 4. Escolha a pasta que contém `manifest.json`.
 5. Fixe o ícone da extensão, abra o painel e recarregue as abas que já estavam abertas.
 
+Ao carregar outra pasta de build, o navegador pode atribuir um novo ID à extensão. Use esse ID no registro do auxiliar abaixo antes de testar destinos nativos; o instalador preserva os IDs já permitidos.
+
 Para atualizar uma instalação clonada, execute `git pull` na pasta e use **Recarregar** na página de extensões. Recarregue também as páginas do navegador para atualizar os content scripts.
 
 ## Auxiliar nativo opcional no macOS
 
-Sem o auxiliar, os downloads usam o mecanismo do navegador. O auxiliar local é necessário para alguns destinos personalizados, processamento adicional e análise de páginas com `yt-dlp`. Ele é opcional e não recebe cookies exportados pelo Media Collector. A análise com `yt-dlp` depende de fontes acessíveis pelas ferramentas instaladas; não promete compatibilidade universal.
+Sem o auxiliar, os downloads usam o mecanismo do navegador e podem obedecer à preferência global de perguntar onde salvar. O auxiliar local é necessário para gravar diretamente em uma pasta persistente sem abrir esse diálogo, para processamento adicional e para análise de páginas com `yt-dlp`. Ele é opcional e não recebe cookies exportados pelo Media Collector. A análise com `yt-dlp` depende de fontes acessíveis pelas ferramentas instaladas; não promete compatibilidade universal.
 
 Instale `yt-dlp`, `ffmpeg` e `ffprobe` no sistema e confirme que os executáveis estão no `PATH` ou nos diretórios conhecidos pelo auxiliar. Com a extensão carregada, copie o ID exibido na página de extensões e registre o host:
 
@@ -138,7 +138,7 @@ Na web geral, o painel pode filtrar imagens por dimensões e mostrar candidatos 
 
 ## Onde os arquivos ficam
 
-O destino padrão fica memorizado entre páginas e reinicializações: escolha uma pasta no painel ou marque **Usar a pasta Downloads do navegador**. A preferência vale também para os botões rápidos de download. Com o auxiliar local, a pasta escolhida é salva em `~/Library/Application Support/Media Collector/destinations.json` e os arquivos ficam organizados por origem (`Instagram`, `X.com`, `Reddit` e `Web geral`). Se o auxiliar ficar indisponível, uma pasta personalizada memorizada não será desviada silenciosamente para Downloads; o painel informará o problema. **Salvar seleção em…** continua sendo uma escolha pontual para aquela fila.
+O destino escolhido fica memorizado entre páginas e reinicializações: use **Escolher pasta para os downloads** para selecionar uma pasta ou marque **Salvar diretamente em Downloads (~/Downloads)**. A preferência também vale para botões rápidos. Com o auxiliar local registrado para o ID atual da extensão, os arquivos são gravados diretamente no destino persistente, sem passar pela caixa “Salvar como” do navegador; a configuração das pastas fica em `~/Library/Application Support/Media Collector/destinations.json`, e os arquivos continuam organizados por origem (`Instagram`, `X.com`, `Reddit` e `Web geral`). Se o auxiliar não puder buscar uma fonte, a fila pausa e oferece **Baixar pelo navegador** ou **Ignorar este item**. A tentativa pelo navegador é sempre iniciada após esse clique e pode abrir o diálogo do sistema. Se o auxiliar ficar indisponível, a pasta memorizada não é desviada silenciosamente para outra pasta. **Salvar seleção em…** continua sendo uma escolha pontual para aquela fila.
 
 Os nomes incluem dados disponíveis da origem, como perfil, domínio, tipo e identificador da publicação. Títulos e parâmetros temporários da URL não são necessários para reconstruir o nome. Colisões recebem sufixos para evitar sobrescrever arquivos existentes.
 
@@ -169,14 +169,6 @@ O manifesto solicita acesso amplo a páginas HTTP e HTTPS para inspecionar mídi
 
 O navegador permite restringir o acesso a sites específicos. Essa restrição pode impedir detecção em páginas ou CDNs não autorizados. Revise as permissões na página de extensões antes de habilitar o projeto.
 
-## Privacidade
-
-- Não há conta, servidor de extração, analytics ou telemetria implementados pelo projeto.
-- Preferências e histórico ficam no armazenamento local do navegador; buffers de mídia são temporários e usados para a captura selecionada.
-- O Media Collector não pede senha nem exporta cookies. Downloads diretos podem depender da sessão que já está aberta no navegador.
-- O auxiliar local não usa `--cookies-from-browser`; recursos que exigem autenticação podem falhar nele mesmo quando aparecem no navegador.
-- As requisições necessárias para carregar a página e a mídia continuam indo ao site/CDN correspondente.
-
 ## Desenvolvimento e testes
 
 Não é necessário instalar pacotes npm para executar os testes incluídos:
@@ -188,22 +180,23 @@ python3 -B -m unittest discover -s testes -p '*_test.py'
 
 Para reconstruir o parser de streaming com a árvore travada, use `npm ci` e `npm run build:streams`. O lockfile também permite repetir a auditoria de dependências com `npm audit`.
 
-Os testes automatizados exercitam lógica e integrações simuladas. Eles não substituem a validação ao vivo em cada site. Para desenvolvimento, carregue a pasta sem compactação no Brave ou Chrome e use páginas de teste que você controla.
+Os testes automatizados exercitam lógica e integrações simuladas. Eles não substituem a validação ao vivo em cada site. Para esta rodada, a validação de interface deve ocorrer no Chrome, em uma janela/perfil indicado pelo usuário, sem criar perfil isolado.
 
 ## Validação e limites conhecidos
 
-Em 23/11/2026, a suíte completa passou com **143 testes JavaScript e 33 testes Python**; também passaram `node --check` em todos os arquivos JavaScript, análise sintática dos arquivos Python e `git diff --check`. O teste novo de carrossel cobre a coleta direta de duas imagens-filhas já presentes no DOM sem avançar o slide. Os testes da fronteira de rede cobrem IP público fixado, DNS misto, redirects privados, proxy autenticado, conexão HTTP/HTTPS simulada e configuração do `yt-dlp`. Smokes anteriores com `yt-dlp` 2026.06.09 bloquearam loopback por HTTP e CONNECT HTTPS; acesso HTTPS público passou pelo proxy e por conexão direta. O alvo privado não recebeu conexão. Estes testes não substituem validação em sites reais.
+Em 23/11/2026, a suíte completa passou com **143 testes JavaScript e 33 testes Python**. Em 24/11/2026, na árvore local 5.3.0 atualizada, passaram **149 testes JavaScript e 35 testes Python**; também passaram `node --check` nos arquivos JavaScript, análise sintática Python e validação JSON do manifest e pacotes. Os testes cobrem Downloads persistente, gravação de MP4/imagem via destino nativo, fallback explícito, aceitação de MIME de áudio no download direto pelo navegador e envio do nome/extensão e tipo de áudio ao auxiliar. O teste de carrossel cobre a coleta direta de imagens-filhas já presentes no DOM sem avançar o slide. Os testes da fronteira de rede cobrem IP público fixado, DNS misto, redirects privados, proxy autenticado, conexão HTTP/HTTPS simulada e configuração do `yt-dlp`. Smokes anteriores com `yt-dlp` 2026.06.09 bloquearam loopback por HTTP e CONNECT HTTPS; acesso HTTPS público passou pelo proxy e por conexão direta. O alvo privado não recebeu conexão. Estes resultados simulados não substituem validação no Chrome ou em sites reais.
 
 | Área | Evidência registrada | Limite atual |
 | --- | --- | --- |
-| Botão rápido / thumbnails | Na árvore 5.1.0, o padrão do hover exige 600 × 600 px quando o filtro está desligado; com o filtro ligado, usa o slider. Imagens de `ytimg.com` e fontes de vídeo encontradas dentro de cards/links de prévia do YouTube ficam fora do botão rápido e do lote automático; capas podem ser mostradas como candidatas revisáveis no painel, mesmo abaixo do slider. O player da página de reprodução não é excluído apenas por estar no YouTube. | É uma correção estática nos caminhos de hover e inventário. A captura que motivou a mudança ainda não foi repetida no Chrome 158; prévias que escondam a relação com o link do vídeo ou usem CDNs/contextos diferentes ainda precisam de validação. |
+| Botão rápido / thumbnails | Na árvore 5.2.0, o padrão do hover exige 600 × 600 px quando o filtro está desligado; com o filtro ligado, usa o slider. Imagens de `ytimg.com` e fontes de vídeo encontradas dentro de cards/links de prévia do YouTube ficam fora do botão rápido e do lote automático; capas podem ser mostradas como candidatas revisáveis no painel, mesmo abaixo do slider. O player da página de reprodução não é excluído apenas por estar no YouTube. | É uma correção estática nos caminhos de hover e inventário. A captura que motivou a mudança ainda não foi repetida no Chrome 158; prévias que escondam a relação com o link do vídeo ou usem CDNs/contextos diferentes ainda precisam de validação. |
 | Web aberta | Em teste histórico no Brave 158, com perfil isolado e interface gráfica, os botões de hover apareceram sobre uma imagem PNG 1200 × 1200 e um MP4 direto. A imagem foi salva no destino temporário personalizado; o SHA-256 coincidiu com a origem. O MP4 foi salvo integralmente; SHA-256 coincidiu, e `ffprobe` confirmou H.264 + AAC, 640 × 360 e 3 s. | Fixture HTTP controlada; não cobre amostra representativa, iframes cross-origin, HLS/DASH público, faixas separadas em player real ou fontes em APIs próprias. Não valida sites sociais. |
-| X | Dois posts públicos foram baixados em rodada anterior no Chrome isolado. Em outro comparativo, um post do Plucker gerou o mesmo MP4 por SHA-256 do Media Collector e outro foi baixado apenas pelo Media Collector. | Num teste histórico, `x.com/NASA` terminou em página de erro do navegador no Brave isolado. Não houve verificação de mídia nem download na revisão atual. Os sucessos anteriores são históricos e não validam o bridge atual. |
+| X | Dois posts públicos foram baixados em rodada anterior no Chrome isolado. | Num teste histórico, `x.com/NASA` terminou em página de erro do navegador no Brave isolado. Não houve verificação de mídia nem download na revisão atual. Os sucessos anteriores são históricos e não validam o bridge atual. |
 | Instagram | Testes automatizados cobrem associação MSE no feed, vídeos em slides diferentes, eviction, expiração e troca de `blob:`. Um teste confirma que duas mídias-filhas já expostas são recolhidas sem avançar slides. Nesta rodada, o perfil público NASA abriu sem autenticação; a aba Reels mostrou thumbnails e a publicação aberta expôs um `<video>` não protegido de 720 × 1280, com dois controles do coletor. | O teste ao vivo confirmou exposição do elemento e presença dos controles, mas não baixou o arquivo. O link aberto redirecionou para uma publicação colaborativa. Stories, feed com vídeo e carrossel real ainda não tiveram download validado. A coleta direta do carrossel só funciona se o site já tiver renderizado as mídias-filhas; caso contrário, usa o fallback visual. |
 | Reddit | Testes simulados cobrem resolução de fontes e um manifesto DASH sintético. | Nesta rodada, a página nova mostrou desafio anti-bot e `old.reddit.com` redirecionou para login. Nenhum post ou arquivo de mídia ficou acessível; vídeo, áudio, GIF e galerias continuam sem validação ao vivo. |
 | Native Messaging | Em teste histórico no Brave 158 isolado, uma fila percorreu o worker e `native-stream.js`; o auxiliar publicou um MP4 fixture em destino temporário. SHA-256 coincidiu com a origem, e `ffprobe` confirmou H.264/AAC por 2 s. | A fixture veio de `127.0.0.1` e foi rotulada `x.com` apenas para acionar o ramo de stream; não é teste do X real nem de escolha de pasta pela interface. O fluxo `chrome.downloads.download` recebeu HTTP 200, mas o Brave headless marcou `USER_CANCELED`; não houve chamada à API de cancelamento pela extensão. Reproduzir em ambiente interativo. |
 | Destino | Em teste histórico no Brave 158 isolado, o painel mostrou a pasta temporária personalizada após fechar e reabrir o navegador. Um download de imagem foi publicado nessa pasta pelo auxiliar local e seu SHA-256 coincidiu com a fixture; a área temporária de estágio ficou vazia após a publicação. | O teste verificou persistência e escrita usando configuração temporária isolada. O seletor do sistema não confirmou a escolha de um caminho novo por interação completa; essa parte da usabilidade continua pendente. Nenhum arquivo de QA permaneceu na pasta real do usuário. |
-| Navegador apontado pelo usuário | O usuário apontou o Brave no perfil habitual para instalar e validar a 5.1.0. | A instalação e o hover nesta versão ainda precisam ser confirmados nessa janela. Os testes de perfis temporários anteriores são históricos; esta rodada não cria outro perfil. |
+| Destino 5.3.0 | Testes automatizados cobrem a persistência da seleção Downloads, escrita em pasta por Native Messaging, escolha explícita de fallback após falha de `fetch`, e ausência de chamadas automáticas a `chrome.downloads` nesse fallback. Validação de tipo de imagem confere assinatura básica e rejeita HTML. | Ainda não validado por interação na janela do Chrome: seleção de pasta personalizada, Downloads, preferência global “Perguntar onde salvar”, persistência após reinício e fallback real em site autenticado. Os testes automatizados não confirmam a experiência do diálogo do macOS nem substituem essa validação. |
+| Navegador apontado pelo usuário | O usuário pediu concentrar a validação de interface no Chrome; builds anteriores tiveram testes isolados em Chrome e Brave. | A instalação e o fluxo de destino da versão local 5.3.0 ainda precisam ser confirmados na janela do Chrome. Nenhuma instalação ou download de mídia real foi feito nesta rodada. |
 | Permissões e privacidade | Manifesto e caminhos principais foram inspecionados estaticamente; não há APIs de cookies/histórico/cache. O auxiliar exige IP global para downloads HTTP(S), fixa o endereço validado na conexão direta e usa proxy local autenticado por tarefa no fluxo `yt-dlp`. O host registrado foi atualizado e recusou uma análise de URL loopback. | A barreira foi testada por unit tests e smoke test local de HTTP/CONNECT; não é firewall do sistema nem validação de todo protocolo ou plugin possível. Nenhuma conexão foi feita ao destino privado de fixture. |
 
 Quando uma mídia falhar, registre apenas o site, o formato observado, o estado do player e a mensagem de erro. Não publique cookies, tokens, URLs assinadas, conteúdo privado ou arquivos baixados.

@@ -50,7 +50,23 @@
   }
   function extension(item) {
     if (item.forceExtension) return item.forceExtension;
-    try { const u = new URL(item.url); const m = u.pathname.match(/\.([a-zA-Z0-9]{2,5})$/); const format = m?.[1] || u.searchParams.get('format'); if (format && /^(jpe?g|png|gif|webp|avif|mp4|m4v|webm|mov|ogv|mkv)$/i.test(format)) return format.toLowerCase(); } catch {}
+    try {
+      const u = new URL(item.url);
+      const m = u.pathname.match(/\.([a-zA-Z0-9]{2,5})$/);
+      const format = m?.[1] || u.searchParams.get('format');
+      if (format && /^(jpe?g|png|gif|webp|avif|mp4|m4v|webm|mov|ogv|mkv|mp3|m4a|aac|wav|wave|ogg|oga|opus|flac|aiff?|wma)$/i.test(format)) return format.toLowerCase();
+    } catch {}
+    if (item.kind === 'audio') {
+      const mime = String(item.mime || '').split(';')[0].trim().toLowerCase();
+      return ({
+        'audio/mpeg':'mp3','audio/mp3':'mp3','audio/x-mpeg':'mp3',
+        'audio/mp4':'m4a','audio/x-m4a':'m4a','audio/aac':'aac',
+        'audio/wav':'wav','audio/x-wav':'wav','audio/wave':'wav','audio/vnd.wave':'wav',
+        'audio/ogg':'ogg','application/ogg':'ogg','audio/opus':'opus',
+        'audio/flac':'flac','audio/x-flac':'flac','audio/aiff':'aiff','audio/x-aiff':'aiff',
+        'audio/webm':'webm','audio/x-ms-wma':'wma'
+      })[mime] || 'bin';
+    }
     return item.kind === 'video' ? 'mp4' : 'jpg';
   }
   function sourceFolder(host) {
