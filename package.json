@@ -1,6 +1,6 @@
 {
   "name": "media-collector",
-  "version": "5.2.0",
+  "version": "5.1.0",
   "private": true,
   "scripts": {
     "build:streams": "esbuild fonte/streams-entry.js --bundle --format=iife --global-name=StreamTools --minify --legal-comments=eof --outfile=streams.js"
