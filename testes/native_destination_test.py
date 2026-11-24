@@ -76,6 +76,30 @@ class NativeDestinationTests(unittest.TestCase):
         self.assertEqual(result.parent, self.home / "One time" / "X.com")
         self.assertEqual(host.get_destination(), first)
 
+    def test_downloads_destination_is_stable_and_does_not_replace_custom_default(self):
+        custom = self.choose(self.home / "Remember", True)
+        first = host.downloads_destination()
+        second = host.downloads_destination()
+        self.assertEqual(pathlib.Path(first["folder"]), self.home / "Downloads")
+        self.assertTrue((self.home / "Downloads").is_dir())
+        self.assertEqual(first["destination"], second["destination"])
+        self.assertEqual(pathlib.Path(second["folder"]), self.home / "Downloads")
+        self.assertEqual(host.get_destination(), custom)
+
+    def test_image_validation_rejects_html_and_accepts_matching_png_signature(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"fixture"
+        with tempfile.TemporaryFile() as file:
+            file.write(png)
+            file.flush()
+            host.verify_staged(file, "fixture", {"kind": "image", "expectedBytes": len(png)}, "sample.png")
+
+        html = b"<!doctype html><html><body>login</body></html>"
+        with tempfile.TemporaryFile() as file:
+            file.write(html)
+            file.flush()
+            with self.assertRaisesRegex(host.InvalidMedia, "HTML"):
+                host.verify_staged(file, "fixture", {"kind": "image", "expectedBytes": len(html)}, "sample.png")
+
     def test_publish_recovers_after_rename_before_journal_commit(self):
         request = self.staged()
         move = host.exclusive_move

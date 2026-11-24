@@ -325,10 +325,12 @@ test('vídeo processado é transmitido ao destino nativo e libera o blob após c
  const s=await h.request('status'),start=native.sent.find(m=>m.action==='stream-start');
  assert.equal(s.job.done,1);assert.equal(h.entries.size,0);assert.equal(start.expectedBytes,4);assert.equal(start.expectedAudio,true);assert.deepEqual(s.job.lastInspection,inspection);assert(messages.some(m=>m.action==='release'));
 });
-test('blob processado usa navegador se fetch falhar antes do início nativo',async()=>{
+test('blob processado aguarda escolha explícita se fetch falhar antes do início nativo',async()=>{
  const h=harness(),native=nativeStreamFixture(h);h.db.job=processedJob();h.chrome.runtime.sendMessage=async()=>({ok:true});h.context.fetch=async()=>{throw Error('blob indisponível');};
  await h.request('stream-ready',{token:'processador',blobUrl:'blob:chrome-extension://teste/processado',extension:'mp4',inspection:{duration:3,video:true,audio:true}});
- await until(()=>h.entries.size===1);assert.equal(native.sent.length,0);assert.equal(h.entries.get(1).opt.url,'blob:chrome-extension://teste/processado');
+ await until(async()=>{const state=await h.request('status');return state.job?.current?.awaitingBrowserFallback===true;});
+ assert.equal(h.entries.size,0);assert.equal(native.sent.length,0);
+ await h.request('browser-fallback-confirm',{},panelSender);assert.equal(h.entries.size,1);assert.equal(h.entries.get(1).opt.url,'blob:chrome-extension://teste/processado');
 });
 test('saída somente de áudio valida faixa de áudio no auxiliar',async()=>{
  const h=harness(),native=nativeStreamFixture(h);h.db.job=processedJob();h.chrome.runtime.sendMessage=async()=>({ok:true});h.context.fetch=async()=>new Response(Buffer.from('data'),{headers:{'content-type':'audio/mpeg'}});
@@ -369,10 +371,30 @@ test('MP4 do X vai ao destino nativo sem criar arquivo em Downloads',async()=>{
  await until(async()=>((await h.request('status')).job.status==='finished'));
  const s=await h.request('status');assert.equal(s.job.done,1);assert.equal(s.job.failed,0);assert.equal(h.entries.size,0);assert(native.sent.some(m=>m.action==='stream-finish'));assert.match(s.job.lastSavedPath,/X\.com/);
 });
-test('falha de fetch antes de iniciar auxiliar usa gerenciador do navegador',async()=>{
+test('MP4 direto da web geral usa destino nativo sem criar download do navegador',async()=>{
+ const h=harness(),native=nativeStreamFixture(h);h.context.fetch=async()=>new Response(Buffer.from('data'),{headers:{'content-type':'video/mp4','content-length':'4'}});
+ const media={...xVideo(),url:'https://media.example/video.mp4',site:'Web geral'};
+ await h.request('download',{items:[media],...folderRequest},panelSender);
+ await until(async()=>((await h.request('status')).job.status==='finished'));
+ const start=native.sent.find(m=>m.action==='stream-start'),s=await h.request('status');
+ assert.equal(s.job.done,1);assert.equal(h.entries.size,0);assert.equal(start.category,'Web geral');assert.equal(start.kind,'video');
+});
+test('imagem gravada no destino nativo usa extensão confirmada pelo Content-Type',async()=>{
+ const h=harness(),native=nativeStreamFixture(h);
+ const png=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00]);
+ h.context.fetch=async()=>new Response(png,{headers:{'content-type':'image/png','content-length':String(png.length)}});
+ await h.request('download',{items:[item(77,'https://media.example/image.jpg')],...folderRequest},panelSender);
+ await until(async()=>((await h.request('status')).job.status==='finished'));
+ const start=native.sent.find(m=>m.action==='stream-start');
+ assert.equal(start.kind,'image');assert.equal(start.filename.endsWith('.png'),true);assert.equal(h.entries.size,0);
+});
+test('falha de fetch antes de iniciar auxiliar aguarda escolha explícita',async()=>{
  const h=harness(),native=nativeStreamFixture(h);h.context.fetch=async()=>{throw Error('network');};
  await h.request('download',{items:[xVideo()],...folderRequest},panelSender);
- await until(()=>h.entries.size===1);assert.equal(native.sent.length,0);assert.match(h.entries.get(1).opt.filename,/Media Collector Temporarios/);
+ await until(async()=>{const state=await h.request('status');return state.job?.current?.awaitingBrowserFallback===true;});
+ assert.equal(native.sent.length,0);assert.equal(h.entries.size,0);
+ await h.request('browser-fallback-confirm',{},panelSender);
+ assert.equal(h.entries.size,1);assert.match(h.entries.get(1).opt.filename,/Media Collector Temporarios/);
 });
 test('cancelar transmissão ao auxiliar mantém fila responsiva e não finaliza arquivo',async()=>{
  const h=harness(),native=nativeStreamFixture(h,{hold:m=>m.action==='stream-append'});h.context.fetch=async()=>new Response(Buffer.from('data'),{headers:{'content-type':'video/mp4'}});
@@ -421,9 +443,25 @@ test('fila responde ao cancelamento enquanto fetch inicial aguarda resposta',asy
  h.context.fetch=(_url,{signal})=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>{fetchAborted=true;reject(Error('abort'));},{once:true}));
  await h.request('download',{items:[xVideo()],...folderRequest},panelSender);await new Promise(r=>setTimeout(r,0));const result=await h.request('cancel');assert.equal(result.ok,true);await until(()=>fetchAborted);const s=await h.request('status');assert.equal(s.job.status,'cancelled');assert.equal(h.entries.size,0);
 });
-test('fetch inicial que não responde entra em fallback sem iniciar o auxiliar',async()=>{
+test('fetch inicial sem resposta não inicia automaticamente o download do navegador',async()=>{
  const h=harness(),native=nativeStreamFixture(h);let aborted=false;h.context.setTimeout=(fn,ms)=>setTimeout(fn,ms===10000?1:ms);h.context.fetch=(_url,{signal})=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(Error('abort'));},{once:true}));
- await h.request('download',{items:[xVideo()],...folderRequest},panelSender);await until(()=>h.entries.size===1);assert.equal(aborted,true);assert.equal(native.sent.length,0);assert.match(h.entries.get(1).opt.filename,/Media Collector Temporarios/);
+ await h.request('download',{items:[xVideo()],...folderRequest},panelSender);
+ await until(async()=>{const state=await h.request('status');return state.job?.current?.awaitingBrowserFallback===true;});
+ assert.equal(aborted,true);assert.equal(native.sent.length,0);assert.equal(h.entries.size,0);
+ await h.request('browser-fallback-confirm',{},panelSender);assert.equal(h.entries.size,1);assert.match(h.entries.get(1).opt.filename,/Media Collector Temporarios/);
+});
+test('Downloads direto fica memorizado e pode ser desmarcado sem usar Save As',async()=>{
+ const h=harness();
+ h.chrome.runtime.sendNativeMessage=async(_host,message)=>{
+  if(message.action==='destination-downloads')return {id:message.id,event:'done',destination:'downloads-token',folder:'/Users/test/Downloads'};
+  if(message.action==='destination-get')return {id:message.id,event:'done',destination:'documents',folder:'/Users/test/Documents/Media Collector/Mídias'};
+  throw Error('Ação nativa inesperada.');
+ };
+ const enabled=await h.request('destination-downloads',{enabled:true},panelSender);
+ assert.equal(enabled.destination.isDownloads,true);assert.equal(h.db.downloadDestination.folder,'/Users/test/Downloads');
+ assert.equal(h.db.downloadDestination.token,'downloads-token');
+ await h.request('destination-downloads',{enabled:false},panelSender);
+ assert.equal(Object.hasOwn(h.db,'downloadDestination'),false);
 });
 test('auxiliar que não responde ao consultar status não bloqueia a fila indefinidamente',async()=>{
  const h=harness();h.db.job=pendingStreamJob();h.context.setTimeout=(fn,ms)=>setTimeout(fn,ms===5000?1:ms);h.chrome.runtime.sendNativeMessage=()=>new Promise(()=>{});

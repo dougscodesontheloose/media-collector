@@ -8,8 +8,9 @@
   <h2 id="destination-title">Onde salvar</h2>
   <p id="destination-status" role="status" class="micro">Consultando pasta padrão…</p>
   <button id="destination-choose" class="ghost full" disabled>Escolher pasta para os downloads</button>
-  <label class="check"><input id="destination-browser" type="checkbox"> Usar a pasta Downloads do navegador</label>
-  <p class="micro destination-note">A escolha fica memorizada e vale para os próximos downloads, inclusive pelos botões rápidos. “Salvar seleção em…” continua sendo uma escolha pontual.</p>
+  <label class="check"><input id="destination-downloads" type="checkbox"> Salvar diretamente em Downloads (~/Downloads)</label>
+  <p class="micro destination-note">O destino fica memorizado e recebe os próximos downloads, inclusive pelos botões rápidos. “Salvar seleção em…” continua sendo uma escolha pontual.</p>
 </section>
 <button id="download" class="primary full">Baixar seleção <span>↓</span></button><button id="download-as" class="ghost full">Salvar seleção em…</button></section>
+<section id="browser-fallback-panel" class="panel activity" hidden><div class="section-title"><div><span class="eyebrow">ALTERNATIVA DE DOWNLOAD</span><h2>Fonte não acessível diretamente</h2></div></div><p id="fallback-detail" class="micro">O auxiliar local não conseguiu buscar esta mídia. O download pelo navegador pode abrir o diálogo do sistema.</p><div class="buttons"><button id="fallback-browser" class="ghost">Baixar pelo navegador</button><button id="ignore-fallback" class="text-button">Ignorar este item</button></div></section>
 <footer><span class="footer-dot"></span> PROCESSADO NO SEU NAVEGADOR <a href="README.md" target="_blank">Guia ↗</a></footer></main><script src="native-stream.js"></script><script src="core.js"></script><script src="adapters.js"></script><script src="observed-media.js"></script><script src="streams.js"></script><script src="panel.js"></script><script src="page-extraction.js"></script></body></html>

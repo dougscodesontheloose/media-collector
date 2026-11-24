@@ -216,14 +216,26 @@ function savedDestination(settings){
  const saved=settings?.[destinationPreferenceKey];
  if(saved?.mode==='browser')return {mode:'browser',explicit:true};
  if(saved?.mode==='folder'&&typeof saved.token==='string'&&saved.token)
-  return {mode:'folder',token:saved.token,folder:typeof saved.folder==='string'?saved.folder:''};
+  return {mode:'folder',token:saved.token,folder:typeof saved.folder==='string'?saved.folder:'',...(saved.isDownloads===true?{isDownloads:true}:{})};
  if(settings?.destinationBrowser===true)return {mode:'browser',explicit:true};
  return null;
+}
+async function directDownloadsDestination(){
+ const result=await nativeRequest('destination-downloads');
+ if(!result?.destination)throw Error('O auxiliar local não confirmou a pasta Downloads.');
+ return {mode:'folder',token:result.destination,folder:result.folder||'',isDownloads:true};
 }
 async function persistentDestination(){
  const settings=await chrome.storage.local.get([destinationPreferenceKey,'destinationBrowser']);
  const saved=savedDestination(settings);
- if(saved)return saved;
+ if(saved?.mode==='folder')return saved;
+ if(saved?.mode==='browser'){
+  try{
+   const destination=await directDownloadsDestination();
+   await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:false});
+   return destination;
+  }catch{return saved;}
+ }
  try{
   const result=await nativeRequest('destination-get');
   if(result?.destination){
@@ -383,16 +395,27 @@ function startNativeDirect(job, filename, sourceUrl=job.current.item.url, proces
    const response=await fetchDirectForStream(sourceUrl,controller.signal);
    if(controller.signal.aborted)throw Error('Transferência cancelada.');
    port=chrome.runtime.connectNative(nativeHost);
-   const [,category,name]=filename.split('/');
+   let targetFilename=filename;
+   if(item.kind==='image'){
+    const extension=MediaCore.imageExtension(response.headers?.get('content-type'));
+    if(extension)targetFilename=filename.replace(/\.[^./]+$/,'.'+extension);
+   }
    let lastProgress=0;
-   const result=await MediaNativeStream.transfer(port,response,{id:stageId,filename:name,category,destination:item.destination.token,kind:processed&&current.inspection?.video===false?'audio':item.kind,expectedBytes:processed?undefined:item.expectedBytes,expectedDuration:processed?(current.inspection?.duration||item.duration):item.duration,expectedAudio:processed?(current.inspection?.audio===true?true:undefined):(item.expectedAudio===true?true:undefined),signal:controller.signal,waitIfPaused,onDispatch(){control.started=true;},onFinishing(){control.finishing=true;serial(async()=>{const {job:j}=await get();if(j?.current?.stageId===stageId){j.current.phase='Finalizando e validando arquivo';await save(j);}}).catch(()=>{});},onProgress(completed,total){
+   const [,targetCategory,targetName]=targetFilename.split('/');
+   const result=await MediaNativeStream.transfer(port,response,{id:stageId,filename:targetName,category:targetCategory,destination:item.destination.token,kind:processed&&current.inspection?.video===false?'audio':item.kind,expectedBytes:processed?undefined:item.expectedBytes,expectedDuration:processed?(current.inspection?.duration||item.duration):item.duration,expectedAudio:processed?(current.inspection?.audio===true?true:undefined):(item.expectedAudio===true?true:undefined),signal:controller.signal,waitIfPaused,onDispatch(){control.started=true;},onFinishing(){control.finishing=true;serial(async()=>{const {job:j}=await get();if(j?.current?.stageId===stageId){j.current.phase='Finalizando e validando arquivo';await save(j);}}).catch(()=>{});},onProgress(completed,total){
     if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();
     serial(async()=>{const {job:j}=await get();if(j?.current?.stageId===stageId){Object.assign(j.current,{phase:'Gravando no destino escolhido',completed,total});await save(j);}}).catch(()=>{});
    }});
    await serial(async()=>{const {job:j}=await get();if(j?.current?.stageId!==stageId)return;const c=j.current;j.done++;j.lastSavedPath=result.filename;j.lastDownloadId=null;if(c.inspection)j.lastInspection=c.inspection;else delete j.lastInspection;await markHistory(item);await recordTransfer(item,'saved',{downloadId:null,filename:result.filename,publicationId:null,error:null});j.current=null;await release(c);if(j.status==='running')await pump(j);else await save(j);});
   }catch(error){
    await serial(async()=>{const {job:j}=await get();if(j?.current?.stageId!==stageId)return;
-    if(!control.started&&!controller.signal.aborted){j.current.stream=false;j.current.phase='Iniciando download';await save(j);try{await launchBrowserDownload(j,filename,sourceUrl,!processed);return;}catch(e){error=e;j.failed++;j.errors.push(err(error));await recordTransfer(item,'failed',{downloadId:null,filename:null,error:err(error)});const c=j.current;j.current=null;await release(c);if(j.status==='running')await pump(j);else await save(j);return;}}
+    if(!control.started&&!controller.signal.aborted){
+     j.current.stream=false;j.current.awaitingBrowserFallback=true;
+     j.current.fallbackUrl=sourceUrl;
+     j.current.fallbackError=redactTransferError(err(error));
+     j.current.phase='Transferência direta indisponível. Escolha como continuar.';
+     j.status='paused';await save(j);return;
+    }
     j.current.streamError=safeStreamError(err(error));j.current.streamPending=true;j.current.phase='Verificando resultado no destino';await save(j);await reconcileNativeStream(j);
    });
   }finally{try{port?.disconnect();}catch{}if(nativeStreamControl===control)nativeStreamControl=null;}
@@ -475,16 +498,18 @@ async function pump(job){if(job.status!=='running'||job.current){await save(job)
   job.next++;
   try{
    if(item.kind==='video'||item.kind==='audio'){
-    const direct=item.kind==='video'&&item.mp4Direct&&item.format==='direct'&&['mp4','original'].includes(item.output)&&!item.useNative;
+    const directVideo=item.kind==='video'&&item.mp4Direct&&item.format==='direct'&&['mp4','original'].includes(item.output)&&!item.useNative;
+    const directAudio=item.kind==='audio'&&item.format==='direct'&&item.output==='audio-original'&&!item.useNative;
+    const direct=directVideo||directAudio;
     if(direct){
      job.current={item,index,stageId,direct:true,phase:item.destination?.mode==='ask'?'Escolha onde salvar':'Iniciando download'};
      await save(job);
-     const filename=MediaCore.filename({...item,forceExtension:'mp4'},index);
+     const filename=MediaCore.filename(directVideo?{...item,forceExtension:'mp4'}:item,index);
      if(!stageId&&!item.expectedBytes){
       item.expectedBytes=await probeDirectLength(item.url);
       if(item.expectedBytes)await save(job);
      }
-     if(stageId && /(^|\.)(x\.com|twitter\.com)$/i.test(item.site||'') && typeof fetch==='function' && chrome.runtime.connectNative){
+     if(stageId && typeof fetch==='function' && chrome.runtime.connectNative){
       job.current.stream=true;job.current.streamOwner=workerInstance;job.current.phase='Preparando transferência local';await save(job);startNativeDirect(job,filename);return;
      }
      await launchBrowserDownload(job,filename,item.url,true);
@@ -520,6 +545,10 @@ async function pump(job){if(job.status!=='running'||job.current){await save(job)
     const token=crypto.randomUUID();if(!['hls','dash'].includes(item.format))item.format='convert';job.current={token,item,index,stageId,phase:'Preparando vídeo',completed:0,total:0};await save(job);await ensureProcessor();const result=await processor({action:'start',token,item});if(result?.error)throw Error(result.error);return;
    }
    job.current={item,index,stageId,phase:item.destination?.mode==='ask'?'Escolha onde salvar':'Iniciando download'};
+   if(item.kind==='image'&&stageId&&typeof fetch==='function'&&chrome.runtime.connectNative){
+    job.current.stream=true;job.current.streamOwner=workerInstance;job.current.phase='Preparando transferência local';await save(job);
+    startNativeDirect(job,MediaCore.filename(item,index));return;
+   }
    await launchBrowserDownload(job,MediaCore.filename(item,index),item.url);
    return;
   }catch(e){await recordTransfer(item,dialogCancelled(item,e)?'cancelled':'failed',{error:err(e)});downloadFilenames.delete(job.current?.browserSource||item.url);if(job.current?.native){nativePort?.disconnect();nativePort=null;}else if(job.current?.token)await processor({action:'cancel',token:job.current.token}).catch(()=>{});job.current=null;job.failed++;job.errors.push(`${item.label||'Mídia'}: ${err(e)}`);await save(job);}
@@ -562,7 +591,7 @@ function newMedia(req,history,seen=new Set(),destination={mode:'browser'}){
  return selected;
 }
 async function handle(req,sender){
- if(['destination-get','destination-choose','destination-browser','destination-reveal','destination-retry'].includes(req.action)){
+ if(['destination-get','destination-choose','destination-browser','destination-downloads','destination-reveal','destination-retry','browser-fallback-confirm','ignore-fallback-item'].includes(req.action)){
   if(!sender.url?.startsWith(chrome.runtime.getURL('')))throw Error('Abra o painel para alterar o destino.');
   if(req.action==='destination-get'){
    let destination,errorMessage;
@@ -578,15 +607,25 @@ async function handle(req,sender){
    if(req.remember)await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:false});
    return {destination};
   }
+  if(req.action==='destination-downloads'){
+   if(req.enabled===false){
+    const settings=await chrome.storage.local.get([destinationPreferenceKey]);
+    if(settings[destinationPreferenceKey]?.isDownloads===true){
+     await chrome.storage.local.remove(destinationPreferenceKey);
+     await chrome.storage.local.set({destinationBrowser:false});
+    }
+    return {ok:true};
+   }
+   const destination=await directDownloadsDestination();
+   await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:false});
+   return {destination};
+  }
   if(req.action==='destination-browser'){
    if(typeof req.enabled!=='boolean')throw Error('Escolha um destino válido.');
-   const destination=req.enabled?{mode:'browser',explicit:true}:null;
-   if(destination)await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:true});
-   else{
-    await chrome.storage.local.set({destinationBrowser:false});
-    const settings=await chrome.storage.local.get([destinationPreferenceKey]);
-    if(settings[destinationPreferenceKey]?.mode==='browser')await chrome.storage.local.remove(destinationPreferenceKey);
-   }
+   if(req.enabled){const destination=await directDownloadsDestination();await chrome.storage.local.set({[destinationPreferenceKey]:destination,destinationBrowser:false});return {destination};}
+   const settings=await chrome.storage.local.get([destinationPreferenceKey]);
+   if(settings[destinationPreferenceKey]?.isDownloads===true)await chrome.storage.local.remove(destinationPreferenceKey);
+   await chrome.storage.local.set({destinationBrowser:false});
    return {ok:true};
   }
   if(req.action==='destination-reveal'){
@@ -594,6 +633,32 @@ async function handle(req,sender){
    if(job?.lastSavedPath!==req.filename&&!Object.values(transfers).some(t=>t.state==='saved'&&t.filename===req.filename))
     throw Error('Arquivo fora do histórico desta extensão.');
    await nativeRequest('reveal-file',{filename:req.filename});
+   return {ok:true};
+  }
+  if(req.action==='browser-fallback-confirm'){
+   const {job:currentJob}=await get();
+   if(!currentJob||currentJob.status!=='paused'||!currentJob.current?.awaitingBrowserFallback)throw Error('Não há um item aguardando confirmação de fallback.');
+   const current=currentJob.current,url=current.fallbackUrl||current.item.url;
+   current.awaitingBrowserFallback=false;delete current.fallbackUrl;delete current.fallbackError;
+   current.phase='Preparando download pelo navegador';currentJob.status='running';await save(currentJob);
+   try{
+    const filename=MediaCore.filename(current.item,current.index);
+    await launchBrowserDownload(currentJob,filename,url,current.direct===true);
+    return {ok:true};
+   }catch(error){
+    const message=redactTransferError(err(error));
+    currentJob.failed++;currentJob.errors.push(message);await recordTransfer(current.item,'failed',{downloadId:null,filename:null,error:message});
+    const active=currentJob.current;currentJob.current=null;await release(active);await pump(currentJob);
+    return {error:message};
+   }
+  }
+  if(req.action==='ignore-fallback-item'){
+   const {job:currentJob}=await get();
+   if(!currentJob||currentJob.status!=='paused'||!currentJob.current?.awaitingBrowserFallback)throw Error('Não há um item aguardando uma decisão.');
+   const current=currentJob.current,message=current.fallbackError||'A transferência direta falhou.';
+   currentJob.failed++;currentJob.errors.push(`${current.item.label||'Mídia'}: ${message}`);
+   await recordTransfer(current.item,'failed',{downloadId:null,filename:null,error:message});
+   await release(current);currentJob.current=null;currentJob.status='running';await save(currentJob);await pump(currentJob);
    return {ok:true};
   }
   const {pendingPublications={},job}=await chrome.storage.local.get(['pendingPublications','job']);
@@ -821,7 +886,8 @@ async function handle(req,sender){
   if(!items.length)throw Error('Não há mídias disponíveis com as opções selecionadas.');for(const item of items)await recordTransfer(item,'queued',{error:null,downloadId:null});job={status:'running',items,next:0,done:0,failed:0,errors:[],current:null,total:items.length};await save(job);await pump(job);return{ok:true};
  }
  if(!job)throw Error('Não há fila de downloads.');
- if(req.action==='pause'){
+  if(req.action==='pause'){
+   if(job?.current?.awaitingBrowserFallback)throw Error('Escolha baixar pelo navegador ou ignorar este item antes de continuar.');
   if(job.status==='running'&&job.current?.stream&&(job.current.streamPending||(nativeStreamControl?.stageId===job.current.stageId&&nativeStreamControl.finishing)))throw Error('O arquivo está sendo finalizado e validado; aguarde a confirmação antes de pausar.');
   if(job.status==='running'){job.status='paused';if(job.current?.stream&&nativeStreamControl?.stageId===job.current.stageId)nativeStreamControl.paused=true;else if(job.current?.native)nativePort?.postMessage({action:'pause',id:job.current.token});else if(job.current?.token&&!job.current.id)await processor({action:'pause',token:job.current.token,paused:true});else if(job.current?.id)try{await chrome.downloads.pause(job.current.id);}catch{}await save(job);}
   else if(job.status==='paused'){job.status='running';if(job.current?.blobUrl){await saveProcessed(job,job.current.blobUrl);return {ok:true};}else if(job.current?.stream&&nativeStreamControl?.stageId===job.current.stageId){nativeStreamControl.paused=false;nativeStreamControl.resume();}else if(job.current?.native)nativePort?.postMessage({action:'resume',id:job.current.token});else if(job.current?.token&&!job.current.id)await processor({action:'pause',token:job.current.token,paused:false});else if(job.current?.id)try{await chrome.downloads.resume(job.current.id);}catch{}await save(job);if(!job.current)await pump(job);}return{ok:true};
@@ -838,7 +904,7 @@ async function handle(req,sender){
  throw Error('Ação desconhecida.');
 }
 chrome.action.onClicked.addListener(async tab=>{if(!tab.id||!/^https?:/i.test(tab.url||''))return;const opened=chrome.sidePanel?.open?chrome.sidePanel.open({windowId:tab.windowId}).then(()=>true,()=>false):Promise.resolve(false);try{await chrome.storage.session.set({'panel-tab':tab.id});if(!await opened)await chrome.windows.create({url:chrome.runtime.getURL(`panel.html?tab=${tab.id}`),type:'popup',width:410,height:760});}catch(e){console.error('Falha ao abrir o coletor:',err(e));}});
-chrome.runtime.onMessage.addListener((req,sender,sendResponse)=>{if(req?.target!=='worker')return;if(req.action==='status'){const needsRecovery=j=>j?.current?.stream&&(j.current.streamPending||j.current.streamOwner!==workerInstance);const serve=async()=>{const {job:latest}=await get();if(needsRecovery(latest))await reconcileNativeStream(latest);return handle(req,sender);};const panel=sender.url?.startsWith(chrome.runtime.getURL(''));(panel?(async()=>{const {job:j}=await get();return needsRecovery(j)?serial(serve):handle(req,sender);})():serial(serve)).then(sendResponse,e=>sendResponse({error:err(e)}));return true;}if(req.action==='resolve-post'){resolvePost(req.postUrl).then(sendResponse,e=>sendResponse({error:err(e)}));return true;}if((['web-capture-run','web-images','inline-source-confirm','observed-source-confirm','destination-choose','player-metadata','player-confirm','player-scan','collector-connect','detected'].includes(req.action)||req.action==='status'&&sender.url?.startsWith(chrome.runtime.getURL('')))){handle(req,sender).then(sendResponse,e=>sendResponse({error:err(e)}));return true;}serial(()=>handle(req,sender)).then(sendResponse,e=>sendResponse({error:err(e)}));return true;});
+chrome.runtime.onMessage.addListener((req,sender,sendResponse)=>{if(req?.target!=='worker')return;if(req.action==='status'){const needsRecovery=j=>j?.current?.stream&&(j.current.streamPending||j.current.streamOwner!==workerInstance);const serve=async()=>{const {job:latest}=await get();if(needsRecovery(latest))await reconcileNativeStream(latest);return handle(req,sender);};const panel=sender.url?.startsWith(chrome.runtime.getURL(''));(panel?(async()=>{const {job:j}=await get();return needsRecovery(j)?serial(serve):handle(req,sender);})():serial(serve)).then(sendResponse,e=>sendResponse({error:err(e)}));return true;}if(req.action==='resolve-post'){resolvePost(req.postUrl).then(sendResponse,e=>sendResponse({error:err(e)}));return true;}if((['web-capture-run','web-images','inline-source-confirm','observed-source-confirm','destination-choose','destination-downloads','player-metadata','player-confirm','player-scan','collector-connect','detected'].includes(req.action)||req.action==='status'&&sender.url?.startsWith(chrome.runtime.getURL('')))){handle(req,sender).then(sendResponse,e=>sendResponse({error:err(e)}));return true;}serial(()=>handle(req,sender)).then(sendResponse,e=>sendResponse({error:err(e)}));return true;});
 chrome.downloads.onChanged.addListener(d=>serial(async()=>{const {job}=await get();if(job)await settle(job,d);}));
 chrome.downloads.onDeterminingFilename?.addListener((download,suggest)=>{
  if(download.byExtensionId!==chrome.runtime.id){suggest();return;}

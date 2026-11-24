@@ -32,14 +32,16 @@ async function refreshDestination(){
  const result=await askWorker('destination-get');
  nativeDestination=result.available;
  $('destination-choose').disabled=!nativeDestination;
- $('destination-choose').textContent=result.destination?.mode==='folder'?'Alterar pasta padrão':'Escolher pasta para os downloads';
- if(result.destination)$('destination-browser').checked=result.destination.mode==='browser';
+ $('destination-choose').textContent=result.destination?.mode==='folder'&&!result.destination.isDownloads?'Alterar pasta padrão':'Escolher pasta para os downloads';
+ if(result.destination)$('destination-downloads').checked=result.destination.isDownloads===true;
  $('destination-status').textContent=result.error||(
   result.destination?.mode==='browser'
-   ?nativeDestination?'Pasta Downloads configurada no navegador. Essa preferência será usada nas próximas páginas.':'Pasta Downloads configurada no navegador. Para selecionar outra pasta, instale o auxiliar local.'
+   ?'Gerenciado pelo navegador. A preferência “perguntar onde salvar” pode abrir um diálogo a cada arquivo.'
+   :result.destination?.isDownloads
+    ?nativeDestination?`Gravação direta em ${result.destination.folder}`:'Downloads foi selecionada, mas o auxiliar local está indisponível.'
    :result.destination?.folder
     ?nativeDestination?`Memorizada: ${result.destination.folder}`:`Memorizada: ${result.destination.folder}. O auxiliar local está indisponível; os downloads não serão desviados para outra pasta.`
-    :'Auxiliar local indisponível. Escolha Downloads do navegador ou instale o auxiliar para selecionar outra pasta.');
+    :'Auxiliar local indisponível. Instale o auxiliar para gravar diretamente em Downloads ou selecionar outra pasta.');
 }
 async function chooseSaveDestination(remember=false){
  if(!nativeDestination)return {mode:'ask'};
@@ -52,8 +54,8 @@ $('destination-choose').onclick=()=>action(async()=>{
  if(!chosen||chosen.mode!=='folder')return;
  await refreshDestination();
 });
-$('destination-browser').onchange=()=>action(async()=>{
- await askWorker('destination-browser',{enabled:$('destination-browser').checked});
+$('destination-downloads').onchange=()=>action(async()=>{
+ await askWorker('destination-downloads',{enabled:$('destination-downloads').checked});
  await refreshDestination();
 });
 function currentImageSize(){return $('web-image-filter').checked?(imageSizes[Number($('web-image-size').value)]||600):0;}
@@ -267,9 +269,14 @@ function renderState(){
  $('download-file-actions').hidden=!job?.lastSavedPath&&!Number.isInteger(job?.lastDownloadId);
  $('open-download').hidden=!Number.isInteger(job?.lastDownloadId);
  $('retry-publication').hidden=!job?.lastPublicationId;
- const active=job&&['running','paused'].includes(job.status);$('download').disabled=!!active;$('download-as').disabled=!!active;$('download-pause').disabled=!active;$('cancel-download').disabled=!active;$('download-pause').textContent=job?.status==='paused'?'Retomar fila':'Pausar fila';
+ const awaitingFallback=!!job?.current?.awaitingBrowserFallback;
+ $('browser-fallback-panel').hidden=!awaitingFallback;
+ $('fallback-detail').textContent=awaitingFallback
+  ?`${job.current.item?.label||'Esta mídia'} não pôde ser buscada pelo auxiliar local.${job.current.fallbackError?` Motivo: ${job.current.fallbackError}`:''} O navegador pode usar a sessão da página, mas poderá abrir o diálogo de destino.`
+  :'';
+ const active=job&&['running','paused'].includes(job.status);$('download').disabled=!!active;$('download-as').disabled=!!active;$('download-pause').disabled=!active||awaitingFallback;$('cancel-download').disabled=!active;$('download-pause').textContent=awaitingFallback?'Aguardando escolha':job?.status==='paused'?'Retomar fila':'Pausar fila';
  const processed=(job?.done||0)+(job?.failed||0),total=job?.total||0;setProgress($('download-progress'),total?100*processed/total:0,false);$('download-count').textContent=total?`${processed} / ${total}`:'—';
- const labels={running:'Baixando',paused:'Fila pausada',cancelled:'Fila cancelada',finished:'Fila finalizada'};$('download-state').textContent=job?`${labels[job.status]||job.status} · ${job.done} concluído(s), ${job.failed} falha(s).`:'Nenhuma fila ativa.';
+ const labels={running:'Baixando',paused:awaitingFallback?'Aguardando sua decisão':'Fila pausada',cancelled:'Fila cancelada',finished:'Fila finalizada'};$('download-state').textContent=job?`${labels[job.status]||job.status} · ${job.done} concluído(s), ${job.failed} falha(s).`:'Nenhuma fila ativa.';
  let current=job?.current;const inspection=current?.inspection||job?.lastInspection;
  $('file-state').textContent=current?(current.total>0?`${current.phase}: ${current.completed||0} / ${current.total}`:(current.totalBytes>0?`${current.phase}: ${Math.round((current.bytes||0)*100/current.totalBytes)}%`:`${current.phase||'Processando'}…`)) : inspection?`Último arquivo: ${inspection.video?'vídeo · ':''}${inspection.audio?'áudio presente':inspection.audioExpected==='unknown'?'áudio não identificado na origem':'sem áudio'}${Number.isFinite(inspection.duration)?` · ${Math.round(inspection.duration)} s`:''}`:'';
 }
@@ -492,6 +499,8 @@ $('download-as').onclick=()=>action(async()=>{
  if(destination)await downloadMedia(chosen,false,false,destination);
 });
 $('retry-publication').onclick=()=>action(()=>askWorker('destination-retry',{id:job?.lastPublicationId}));
+$('fallback-browser').onclick=()=>action(()=>askWorker('browser-fallback-confirm'));
+$('ignore-fallback').onclick=()=>action(()=>askWorker('ignore-fallback-item'));
 $('download-pause').onclick=()=>action(()=>askWorker('pause'));$('cancel-download').onclick=()=>action(()=>askWorker('cancel'));$('clear-history').onclick=()=>action(async()=>{await askWorker('history-clear');fingerprint='';});
 let canOpenFile=false;
 chrome.permissions.contains({permissions:['downloads.open']}).then(value=>{canOpenFile=value;}).catch(()=>{});

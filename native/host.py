@@ -530,6 +530,22 @@ def default_destination():
     return pathlib.Path.home() / "Documents" / "Media Collector" / "Mídias"
 
 
+def downloads_destination():
+    folder = pathlib.Path.home() / "Downloads"
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    folder = folder.resolve(strict=True)
+    if not folder.is_dir() or not os.access(folder, os.W_OK | os.X_OK):
+        raise ValueError("A pasta Downloads não permite gravação.")
+    with local_state("destinations") as (state, target):
+        folders = state.setdefault("folders", {})
+        token = next((key for key, value in folders.items() if value == str(folder)), None)
+        if token is None:
+            token = str(uuid.uuid4())
+            folders[token] = str(folder)
+            persist(target, state)
+    return {"destination": token, "folder": str(folder)}
+
+
 def validate_filename(name):
     if not isinstance(name, str) or not re.fullmatch(rf"[A-Za-z0-9][A-Za-z0-9_. ()-]{{0,99}}\.(?:{EXTENSION})", name, re.I):
         raise InvalidMedia("Nome de arquivo inválido.")
@@ -684,6 +700,23 @@ def verify_staged(file, source, payload, filename):
         file.seek(-1, os.SEEK_END)
         if not header.startswith((b"GIF87a", b"GIF89a")) or file.read() != b";":
             raise InvalidMedia("O GIF recebido é inválido ou incompleto.")
+    elif payload.get("kind") == "image":
+        file.seek(0)
+        header = file.read(512)
+        valid = {
+            ".jpg": header.startswith(b"\xff\xd8\xff"),
+            ".jpeg": header.startswith(b"\xff\xd8\xff"),
+            ".png": header.startswith(b"\x89PNG\r\n\x1a\n"),
+            ".webp": len(header) >= 12 and header.startswith(b"RIFF") and header[8:12] == b"WEBP",
+            ".bmp": header.startswith(b"BM"),
+            ".ico": header.startswith(b"\x00\x00\x01\x00"),
+            ".tiff": header.startswith((b"II*\x00", b"MM\x00*")),
+            ".avif": header.startswith(b"\x00\x00") and b"ftyp" in header[:16] and any(brand in header[:64] for brand in (b"avif", b"avis")),
+            ".jxl": header.startswith(b"\xff\x0a") or (b"ftyp" in header[:16] and b"jxl " in header[:64]),
+            ".svg": b"<svg" in header.lower(),
+        }.get(suffix)
+        if valid is False or valid is None:
+            raise InvalidMedia("O conteúdo recebido não corresponde ao formato da imagem.")
     ffprobe = binary("ffprobe")
     kind = payload.get("kind")
     if kind in ("audio", "video") and not ffprobe and (payload.get("expectedAudio") is True or payload.get("expectedDuration")):
@@ -1005,6 +1038,8 @@ def run_destination_action(action, payload):
     try:
         if action == "destination-get":
             result.update(get_destination())
+        elif action == "destination-downloads":
+            result.update(downloads_destination())
         elif action == "destination-choose":
             result.update(choose_destination(payload.get("remember") is True))
         elif action == "publish-download":
@@ -1336,7 +1371,7 @@ def main():
                 stream.worker.start()
         elif action in ("stream-start", "stream-append", "stream-cancel"):
             send(stream.dispatch(message))
-        elif action in ("destination-get", "destination-choose", "publish-download", "reveal-file"):
+        elif action in ("destination-get", "destination-downloads", "destination-choose", "publish-download", "reveal-file"):
             run_destination_action(action, message)
         elif action in ("start", "page-analyze", "page-download"):
             if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", request_id):
