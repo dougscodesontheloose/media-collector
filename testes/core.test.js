@@ -24,6 +24,12 @@ test('limites da web são estritos, ajustáveis para imagens e preservam áudio'
   assert.equal(C.webEligible({kind:'video',width:0,height:0}),false);
   assert.equal(C.webEligible({kind:'audio',width:0,height:0}),true);
 });
+test('capas de vídeo do YouTube ficam fora do botão rápido, mas podem continuar no painel', () => {
+  assert.equal(C.isYouTubePreview('news.google.com','https://i.ytimg.com/vi/abc123/hqdefault.jpg'),true);
+  assert.equal(C.isYouTubePreview('news.google.com','https://images.example.test/card.jpg','https://www.youtube.com/watch?v=abc123'),true);
+  assert.equal(C.isYouTubePreview('youtube.com','https://images.example.test/card.jpg','ytd-thumbnail'),true);
+  assert.equal(C.isYouTubePreview('news.google.com','https://images.example.test/editorial.jpg','article figure img'),false);
+});
 test('nomes são confinados à pasta de downloads e não interpretam caminhos', () => {
   assert.equal(C.filename({site:'x.com',page:'../@teste',kind:'video',url:'https://cdn.test/a.mp4'},0), 'Media Collector/X.com/x.com-video-7547b833.mp4');
   assert.equal(C.key('https://site.test/a.jpg#fragmento'),'https://site.test/a.jpg');

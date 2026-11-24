@@ -16,3 +16,9 @@ test('botões de download injetados exigem evento de clique confiável',()=>{
 test('hover da web aberta não expõe botão por pointermove sintético',()=>{
  assert.match(source('content.js'),/document\.addEventListener\('pointermove',event=>\{\s*if\(!event\.isTrusted\)return;/);
 });
+
+test('hover web reduz interferência e exclui miniaturas do YouTube do atalho rápido',()=>{
+ assert.match(source('panel.js'),/minimum:imageMinimum\|\|600/);
+ assert.match(source('content.js'),/C\.isYouTubePreview\(location\.hostname,item\.url,youtubePreviewContext\(element\)\)/);
+ assert.match(source('content.js'),/C\.webEligible\(\{kind:'video',\.\.\.dimensions\},0\)/);
+});

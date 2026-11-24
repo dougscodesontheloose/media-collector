@@ -68,8 +68,9 @@ function syncOverlay(){
   .map(i=>[i.url,imageVariantLists.get(i.id).filter(size=>size.url!==i.url&&passesImageFilter({kind:'image',...size}))
    .sort((a,b)=>b.width*b.height-a.width*a.height)]);
  try{
+  const imageMinimum=currentImageSize();
   overlayPort.postMessage({tabId,enabled:webGeneral&&!hoverDisabled[hoverHost]&&['all','image'].includes($('kind').value),
-   minimum:currentImageSize(),includeInterface:$('web-image-interface').checked,minWidth:Number($('min-width').value)||0,minHeight:Number($('min-height').value)||0,originals});
+   minimum:imageMinimum||600,includeInterface:$('web-image-interface').checked,minWidth:Number($('min-width').value)||0,minHeight:Number($('min-height').value)||0,originals});
  }catch{overlayPort=null;}
 }
 function updateImageSize(){
@@ -88,6 +89,7 @@ function imageFilters(){
   minWidth:Number($('min-width').value)||0,minHeight:Number($('min-height').value)||0};
 }
 function imageAllowed(item,filters){
+ if(item.youtubePreview)return !item.interface||filters.includeInterface;
  return (!item.interface||filters.includeInterface)&&item.width>=Math.max(filters.minimum,filters.minWidth)&&item.height>=Math.max(filters.minimum,filters.minHeight);
 }
 function needsImageVariant(item){return webGeneral&&item.kind==='image'&&item.variants?.length>1&&!passesImageFilter(effectiveItem(item));}
@@ -386,6 +388,7 @@ function pageImages(frames){
   if(!previous){result.set(item.id,item);continue;}
   const preferred=previous.available?previous:item;
   result.set(item.id,{...preferred,interface:previous.interface&&item.interface,
+   youtubePreview:!!(previous.youtubePreview||item.youtubePreview),
    variants:[...new Set([...(previous.variants||[]),...(item.variants||[])])]});
  }
  return [...result.values()];
@@ -410,6 +413,7 @@ async function downloadPageImages(){
    const images=pageImages(frames);
    pending=0;
    for(const item of images){
+    if(item.youtubePreview)continue;
     if(item.interface&&!filters.includeInterface)continue;
     if(!item.available)pending++;
     if(item.available&&imageAllowed(item,filters))found.set(item.id,item);

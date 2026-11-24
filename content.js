@@ -87,7 +87,7 @@
     const ready=!!(!waiting&&dimensions?.width&&dimensions?.height&&(!photo||element.complete));
     return {id:url,kind:'image',webImage:true,url,preview:ready?url:'',
       width:ready?dimensions.width:0,height:ready?dimensions.height:0,available:ready,
-      interface:isInterface(element),site:location.hostname,page:'',
+      interface:isInterface(element),youtubePreview:C.isYouTubePreview(location.hostname,url,youtubePreviewContext(element)),site:location.hostname,page:'',
       variants:photo?[...new Set([url,...imageAlternatives(element)])]:[],
       reason:ready?'':photo&&element.complete&&!waiting?'A página não conseguiu carregar esta imagem.':'Aguardando a imagem carregar.'};
   }
@@ -103,6 +103,7 @@
         if(previous){
           const combined=previous.available?previous:record;
           combined.interface=previous.interface&&record.interface;
+          combined.youtubePreview=!!(previous.youtubePreview||record.youtubePreview);
           combined.variants=[...new Set([...(previous.variants||[]),...(record.variants||[])])];
           found.set(record.id,combined);
         }else found.set(record.id,record);
@@ -129,6 +130,17 @@
     return !!dimensions&&dimensions.width>=overlayState.minimum&&dimensions.height>=overlayState.minimum&&
       dimensions.width>=overlayState.minWidth&&dimensions.height>=overlayState.minHeight;
   }
+  function youtubePreviewContext(element){
+    const evidence=[];
+    let node=element;
+    for(let depth=0;node&&node!==document.body&&depth<6;depth++,node=parentOf(node)){
+      evidence.push(node.id,node.getAttribute?.('class'),node.getAttribute?.('aria-label'),node.getAttribute?.('title'));
+      if(node.matches?.('a[href]'))evidence.push(node.href);
+      const link=node.closest?.('a[href]');
+      if(link)evidence.push(link.href);
+    }
+    return evidence.filter(Boolean).join(' ');
+  }
   function hideWebOverlay(){
     overlayState.image=null;overlayState.source='';
     if(overlayState.button){overlayState.button.hidden=true;overlayState.button.style.setProperty('display','none','important');}
@@ -146,13 +158,19 @@
       const raw=MediaInline.sourceOf(element);
       const url=C.absolute(raw,document.baseURI);
       if(!url||/[?&](range|bytestart|byteend)=/i.test(url))return null;
+      // YouTube's hover previews can expose a real player stream inside a
+      // thumbnail card. Keep that media visible to the sidebar inventory,
+      // but leave the quick-download overlay for the actual watch player.
+      if(C.isYouTubePreview(location.hostname,url,youtubePreviewContext(element)))return null;
       const path=new URL(url).pathname;
       const format=/\.m3u8$/i.test(path)?'hls':/\.mpd$/i.test(path)?'dash':'direct';
       const dimensions={width:element.videoWidth,height:element.videoHeight};
+      if(!C.webEligible({kind:'video',...dimensions},0)||!overlayEligible(dimensions))return null;
       return {url,dimensions,kind:'video',format};
     }
     const item=imageRecord(element);
     if(!item?.available||item.interface&&!overlayState.includeInterface)return null;
+    if(C.isYouTubePreview(location.hostname,item.url,youtubePreviewContext(element)))return null;
     if(overlayEligible(item))return {url:item.url,dimensions:item};
     const original=overlayState.originals.get(item.url)?.find(candidate=>item.variants.includes(candidate.url)&&overlayEligible(candidate));
     if(original)return {url:original.url,dimensions:original,original:true};

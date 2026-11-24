@@ -2,7 +2,7 @@
 
 Extensão experimental Manifest V3 para Chromium que ajuda a localizar e salvar fotos, vídeos e áudio que uma página já disponibiliza ao navegador. O processamento e o histórico são locais. O projeto não usa servidor próprio de extração, API oficial ou telemetria.
 
-**Repositório:** <https://github.com/dougscodesontheloose/media-collector> · **Estado:** linha 5.0.1 em desenvolvimento. A cobertura varia por site e formato; consulte [validação atual](#validação-e-limites-conhecidos) e a [matriz de paridade com as quatro referências](MATRIZ_PARIDADE.md).
+**Repositório:** <https://github.com/dougscodesontheloose/media-collector> · **Versão:** 5.1.0 · **Estado:** build experimental; a cobertura varia por site e formato. Consulte a [especificação funcional](#especificação-funcional-consolidada), a [validação atual](#validação-e-limites-conhecidos) e a [matriz de paridade com as quatro referências](MATRIZ_PARIDADE.md).
 
 Use a extensão somente com conteúdo que você tenha direito de salvar e respeite as regras e permissões do site. Ela não contorna DRM, paywalls ou controles de acesso.
 
@@ -17,6 +17,83 @@ Use a extensão somente com conteúdo que você tenha direito de salvar e respei
 - Salva os arquivos localmente, com destino configurável. O auxiliar nativo opcional permite escolher uma pasta e analisar páginas usando ferramentas instaladas no computador.
 
 Esses recursos não garantem a captura de todos os itens de um perfil ou site. Links temporários, players fechados, formatos incompatíveis, expiração de URLs, conteúdo protegido e mudanças nas páginas podem impedir a detecção ou o download.
+
+## Especificação funcional consolidada
+
+Esta seção registra o que o Media Collector **deve fazer** para orientar auditorias, correções e versões futuras. Ela consolida os pedidos do projeto e os comportamentos públicos que usamos como referência; não afirma que todas as capacidades já estejam implementadas ou validadas. O estado real por cenário fica em [Validação e limites conhecidos](#validação-e-limites-conhecidos) e na [matriz de paridade](MATRIZ_PARIDADE.md).
+
+### Como usar as quatro referências
+
+O objetivo é combinar capacidades úteis numa extensão própria, com uma única fila, painel, sistema de destino e modelo de privacidade. As referências funcionais são as versões observadas pelo usuário: [Image Downloader 4.5.12](https://chromewebstore.google.com/detail/image-downloader/cnpniohnfphhjihaiiggeabnkjhpaldj), [Plucker XBD 6.1](https://chromewebstore.google.com/detail/plucker-xbd-xtwitter-medi/piibekljdlkbkdchicfdjpnaggolndif), [Turbo Downloader for Instagram 4.12.16](https://chromewebstore.google.com/detail/turbo-downloader-for-inst/cpgaheeihidjmolbakklolchdplenjai) e [Video DownloadHelper 10.7.1.2](https://chromewebstore.google.com/detail/video-download-helper/lmjnegcaeklhafolokijcfjliaokphfk).
+
+| Referência | Capacidade que queremos incorporar por implementação independente |
+| --- | --- |
+| Image Downloader | Inventário de imagens, resolução de variantes, filtros por dimensões, prévia, seleção individual ou em lote e atalho de hover. |
+| Plucker XBD | Ação rápida junto a uma publicação do X, com a mídia associada ao post correto e sem confundir poster com vídeo. |
+| Turbo Downloader for Instagram | Ações em fotos, carrosséis, Reels e Stories, além de coleta em lote de conteúdo carregável de perfis, com progresso. |
+| Video DownloadHelper | Detecção ampla de vídeo e áudio em players, escolha de formato/qualidade, suporte a arquivos e streams e uso opcional de processamento local. |
+
+Essas referências orientam **o que observar e comparar**, não o código a copiar. Lojas, descrições e capturas registram recursos anunciados ou vistos; não provam todos os detalhes internos. Cada relatório deve separar requisitos, comportamento observado, hipótese técnica e resultado reproduzido no Media Collector. Não copiar código, ativos, identidade visual ou técnicas proprietárias. A [matriz](MATRIZ_PARIDADE.md) guarda as evidências comparativas disponíveis.
+
+### Requisitos de experiência e navegação
+
+- **UX-01 — Ação contextual sem interferência:** a extensão não deve cobrir controles, deslocar conteúdo, capturar eventos da página ou colocar um botão sobre cada elemento visual encontrado. A lista do painel é o lugar para candidatos ambíguos e inspeção em lote.
+- **UX-02 — Atalho de hover seletivo:** exibir um botão pequeno, discreto e acessível por teclado somente quando o ponteiro estiver sobre mídia elegível e baixável. Respeitar a opção de desligar o hover para o site atual. Sem filtro dimensional ativo, imagens precisam ter ao menos 600 × 600 px para receber o atalho; com o filtro ativo, o limiar segue o slider. Players de vídeo precisam ter dimensões verificadas acima de 500 × 500 px.
+- **UX-03 — Miniaturas:** capas de vídeos do YouTube podem aparecer como candidatas revisáveis no painel, mesmo abaixo do limite dimensional, mas ficam fora do botão rápido e da coleta em lote de imagens da página. Poster, thumbnail, avatar, logo, ícone, seta, indicador, botão e outro elemento de interface não podem ser confundidos com o arquivo de vídeo ou com uma imagem editorial baixável. Se não houver associação confiável, deixar a pessoa revisar o candidato no painel.
+- **UX-04 — Filtro dimensional ajustável:** oferecer slider de tamanho mínimo de imagem com as opções **100, 200, 400, 600, 800, 1000 e acima de 1000 px**, aplicadas às dimensões reais verificadas da imagem. Áudio não usa filtro de dimensão. A lista lateral pode mostrar candidatos menores quando o filtro estiver desligado; isso não autoriza o atalho rápido a cobrir miniaturas.
+- **UX-05 — Atualização da aba:** disponibilizar ação para atualizar a coleta da aba ativa após navegação comum ou SPA, sem exigir reinstalar ou reabrir a extensão.
+- **UX-06 — Adaptação visual:** integrar os controles ao site, sem substituir o desenho do site. No Instagram, usar o controle discreto off-white com símbolo vermelho; no X, manter o atalho que já se integra à barra de ações e adaptar a apresentação conforme o domínio.
+- **UX-07 — Estado compreensível:** distinguir encontrado, verificando, na fila, baixando, processando, pausado, salvo, incompleto e falhou. Uma fila iniciada ou um arquivo criado não bastam para declarar sucesso.
+
+### Requisitos da web aberta
+
+- **WEB-01 — Página variável:** adaptar a coleta ao que a página realmente expõe, sem presumir uma estrutura única de site. O painel deve permitir atualizar e revisar os candidatos encontrados.
+- **WEB-02 — Imagens:** identificar `<img>`, `<picture>`, `srcset`, lazy loading e imagens de fundo quando o navegador e a página permitirem; apresentar resoluções alternativas quando verificáveis; deduplicar a mesma origem. Não prometer acesso a fontes que a página não disponibiliza.
+- **WEB-03 — Players:** procurar fontes diretas de `<video>`/`<audio>`, `<source>`, metadados e respostas de mídia observáveis. Considerar iframes e Shadow DOM aberto quando houver permissão e associação segura. A inspeção de rede deve gerar candidatos revisáveis, não baixar automaticamente todo recurso da página.
+- **WEB-04 — Formatos de vídeo e áudio:** reconhecer arquivos diretos e tentar HLS/DASH quando manifestos, segmentos e trilhas estiverem completos e sem proteção. Lidar com vídeo e áudio separados, respostas parciais e ranges apenas quando for possível validar ordem, cobertura e integridade. `blob:`/MSE só podem ser processados em fluxos suportados, com ação explícita do usuário e buffer suficiente.
+- **WEB-05 — Formato final:** MP4 é o padrão dos atalhos rápidos. O painel pode oferecer MP4, WebM, original e formatos de áudio. Só converter quando o processamento local realmente produzir o contêiner e codec escolhidos; nunca renomear bytes incompatíveis para aparentar MP4. Se não for possível converter, informar e preservar o original quando viável.
+- **WEB-06 — Limites honestos:** a presença de um player não garante uma fonte salvável. DRM, fontes criptografadas, autenticação que o processo local não possui, URLs expiradas, segmentos ausentes, CORS, quadros inacessíveis e codecs incompatíveis devem produzir um motivo claro. Não contornar DRM, paywall ou controle de acesso.
+
+### Adaptadores sociais
+
+- **IG-01 — Ações individuais:** permitir baixar a foto, vídeo, Reel ou Story atual que esteja acessível na sessão. O Story deve ser associado ao conteúdo exibido, inclusive na troca entre Stories; se ele apenas compartilhar um Reel, o atalho tenta salvar o Story exibido e não promete baixar o Reel completo.
+- **IG-02 — Carrossel:** oferecer download de todos os itens do post num único acionamento e também a opção individual por item. Primeiro coletar filhos já renderizados e associados ao post; usar navegação visual como fallback apenas quando necessário. Não percorrer slide por slide se todos os itens já estão disponíveis no DOM.
+- **IG-03 — Perfil e feed:** oferecer “Baixar tudo” no perfil e “Baixar posts carregados” no feed, incluindo fotos e vídeos acessíveis, sem filtro de tipo para a ação de tudo. Percorrer apenas conteúdo que a página consiga carregar com a sessão aberta; permitir limite configurável, progresso, pausa, retomada e cancelamento; reportar itens ignorados e coleta parcial. Nunca declarar perfil completo se a rolagem foi interrompida, se a página parou de carregar ou se houve falhas.
+- **X-01 — Ação no post:** oferecer um botão discreto na área de ações do post, associado ao post atualmente exibido. Baixar imagem, GIF ou vídeo correspondente; ao escolher vídeo, não entregar apenas o poster.
+- **X-02 — Variantes e timeline:** selecionar uma variante de vídeo verificável, não misturar mídia de posts pré-carregados e atualizar a associação em navegação SPA. Se a origem direta não puder ser determinada, apresentar a fonte no painel para verificação.
+- **RED-01 — Publicações:** oferecer ações para fotos, galerias, GIFs e vídeos do Reddit, associados ao post atual.
+- **RED-02 — Vídeo e áudio:** quando vídeo e áudio forem trilhas separadas (por exemplo, DASH), combiná-los localmente apenas se as trilhas forem completas e sincronizáveis; validar o arquivo final, não apenas a conclusão da fila.
+
+### Fila, destino e nomes
+
+- **DL-01 — Controle da fila:** seleção individual ou em lote, progresso de descoberta e download, pausa/retomada, cancelamento, nova tentativa, deduplicação e mensagens específicas por item. Não chamar uma coleta parcial de completa.
+- **DL-02 — Pastas simples:** agrupar tudo em `Media Collector/Instagram`, `Media Collector/X.com`, `Media Collector/Reddit` ou `Media Collector/Web geral`. Não criar subpastas por perfil, post, Story, Reel ou tipo de mídia; não criar arquivos `.txt` com URLs.
+- **DL-03 — Destino escolhido:** permitir configurar uma pasta padrão persistente, usar a pasta Downloads do navegador ou selecionar outro destino para uma fila específica, quando o ambiente e o auxiliar local derem suporte. Informar se um modo não está disponível; não redirecionar silenciosamente para outra pasta.
+- **DL-04 — Nomes úteis:** usar o perfil/autor quando conhecido, origem e identificador estável de post/mídia/posição quando disponíveis. Evitar nomes genéricos como `Mídia 1`; remover parâmetros assinados e segredos do nome; resolver colisões sem sobrescrever arquivos.
+- **DL-05 — Confirmação:** conferir tipo, dimensões, duração, presença de áudio e integridade quando os dados forem acessíveis. Mostrar arquivo/pasta e estado real depois do download.
+
+### Privacidade e limites de acesso
+
+- **PRIV-01:** processar e manter estado no dispositivo sempre que possível; não usar servidor próprio de extração, telemetria ou código remoto.
+- **PRIV-02:** não pedir senha, ler/exportar cookies pela API de cookies nem coletar histórico/cache do navegador. Algumas requisições feitas pela extensão podem usar a sessão já aberta; isso deve ser declarado, limitado à obtenção da mídia escolhida e nunca registrado em relatórios. O auxiliar `yt-dlp` não recebe cookies exportados.
+- **PRIV-03:** solicitar somente as permissões necessárias e explicar as permissões amplas de host no [guia de segurança](SECURITY.md). O acesso a conteúdo autenticado deve continuar sujeito à sessão, disponibilidade e regras do próprio serviço; não usar endpoints privados ou APIs não autorizadas para contornar essas barreiras.
+- **PRIV-04:** manter auxiliar, `yt-dlp` e FFmpeg opcionais. Restringir destinos de rede e validar arquivos antes de publicar no destino. Não afirmar que o auxiliar elimina todos os limites de segurança ou compatibilidade.
+
+### Critérios de aceite para auditorias futuras
+
+Uma capacidade só deve ser marcada **Validada** quando testada na versão identificada, com o resultado observado e artefato verificado quando aplicável. A suíte simulada é evidência de lógica, não prova de compatibilidade no site.
+
+| Grupo | Cenários mínimos para fechar a validação |
+| --- | --- |
+| Web / hover | Imagem editorial grande, miniatura comum, capa do YouTube, logo/avatar, botão de interface, slider nos limiares, desligar hover por site e navegação sem sobreposição indevida; verificar que a miniatura do YouTube continua acessível no painel. |
+| Web / vídeo | MP4/WebM direto; HLS; DASH com áudio separado; resposta parcial; `blob:`/MSE em player compatível; mudança de fonte; iframe acessível e inacessível; erro/expiração; validar codec, duração, áudio e integridade. |
+| Instagram | Foto, carrossel com filhos já renderizados, carrossel com fallback, feed com vídeo, Reel, Story de foto, Story de vídeo e perfil interrompido/limitado; verificar associação e estado parcial. |
+| X | Foto, GIF, vídeo com poster, vídeo antes/depois do play, mais de um post/player na tela e navegação SPA; comparar arquivos de mesmo post sem presumir equivalência interna. |
+| Reddit | Foto, galeria, GIF servido como vídeo, DASH com áudio separado, erro e post com várias mídias. |
+| Fila e destino | Pasta personalizada, Downloads do navegador, nome, colisão, duplicata, pausa, retomada, cancelamento, falha parcial e recuperação; verificar bytes no destino final. |
+| Privacidade | Revisar permissões, dependências, tráfego, logs, estado local, auxiliar e ausência de telemetria/código remoto; repetir testes de restrição de rede documentados em `SECURITY.md`. |
+
+A validação prática desta rodada deve usar o perfil real do Chrome ou Brave que o usuário apontar, inclusive se estiver autenticado. Não criar perfis isolados. Resultados de sessões isoladas anteriores são somente evidência histórica; não substituem a validação no navegador escolhido para esta rodada.
 
 ## Instalar no Chrome ou Brave
 
@@ -57,7 +134,7 @@ No macOS, o Brave configura o Native Messaging para consultar `~/Library/Applica
 
 No Instagram, os atalhos podem aparecer em publicações, Reels e Stories acessíveis na sessão; Stories/Reels podem usar buffers temporários do player. No X, o atalho associa fontes ao post e ao poster exibidos. Dois posts públicos tiveram downloads completos em uma rodada anterior no Chrome isolado; veja a tabela abaixo para o alcance exato e a tentativa de repetição após os últimos ajustes. No Reddit, fotos, galerias, GIFs publicados como vídeo e algumas fontes DASH podem ser detectados, mas ainda faltam downloads reais de vídeo.
 
-Na web geral, o painel pode filtrar imagens por dimensões e mostrar candidatos de rede quando a resposta tem tipo ou extensão reconhecível. O botão de hover depende de o elemento ser identificado como imagem de conteúdo, passar pelo filtro de elegibilidade e permitir que o content script opere naquela página.
+Na web geral, o painel pode filtrar imagens por dimensões e mostrar candidatos de rede quando a resposta tem tipo ou extensão reconhecível. Sem filtro dimensional ativo, o botão rápido exige uma imagem de pelo menos 600 × 600 px; quando o filtro é ativado, segue o slider. Capas de vídeos do YouTube ficam no painel e não recebem botão rápido.
 
 ## Onde os arquivos ficam
 
@@ -115,17 +192,18 @@ Os testes automatizados exercitam lógica e integrações simuladas. Eles não s
 
 ## Validação e limites conhecidos
 
-Em 23/11/2026, a suíte completa passou com **141 testes JavaScript e 33 testes Python**; também passaram `node --check` em todos os arquivos JavaScript, análise sintática dos arquivos Python e `git diff --check`. O teste novo de carrossel cobre a coleta direta de duas imagens-filhas já presentes no DOM sem avançar o slide. Os testes da fronteira de rede cobrem IP público fixado, DNS misto, redirects privados, proxy autenticado, conexão HTTP/HTTPS simulada e configuração do `yt-dlp`. Smokes anteriores com `yt-dlp` 2026.06.09 bloquearam loopback por HTTP e CONNECT HTTPS; acesso HTTPS público passou pelo proxy e por conexão direta. O alvo privado não recebeu conexão. Estes testes não substituem validação em sites reais.
+Em 23/11/2026, a suíte completa passou com **143 testes JavaScript e 33 testes Python**; também passaram `node --check` em todos os arquivos JavaScript, análise sintática dos arquivos Python e `git diff --check`. O teste novo de carrossel cobre a coleta direta de duas imagens-filhas já presentes no DOM sem avançar o slide. Os testes da fronteira de rede cobrem IP público fixado, DNS misto, redirects privados, proxy autenticado, conexão HTTP/HTTPS simulada e configuração do `yt-dlp`. Smokes anteriores com `yt-dlp` 2026.06.09 bloquearam loopback por HTTP e CONNECT HTTPS; acesso HTTPS público passou pelo proxy e por conexão direta. O alvo privado não recebeu conexão. Estes testes não substituem validação em sites reais.
 
 | Área | Evidência registrada | Limite atual |
 | --- | --- | --- |
-| Web aberta | No Brave 158 com perfil isolado e interface gráfica, os botões de hover apareceram sobre uma imagem PNG 1200 × 1200 e um MP4 direto. A imagem foi salva no destino temporário personalizado; o SHA-256 coincidiu com a origem. O MP4 foi salvo integralmente; SHA-256 coincidiu, e `ffprobe` confirmou H.264 + AAC, 640 × 360 e 3 s. | Fixture HTTP controlada; não cobre amostra representativa, iframes cross-origin, HLS/DASH público, faixas separadas em player real ou fontes em APIs próprias. Não valida sites sociais. |
-| X | Dois posts públicos foram baixados em rodada anterior no Chrome isolado. Em outro comparativo, um post do Plucker gerou o mesmo MP4 por SHA-256 do Media Collector e outro foi baixado apenas pelo Media Collector. | Nesta rodada, `x.com/NASA` terminou em página de erro do navegador no Brave isolado. Não houve verificação de mídia nem download na revisão atual. Os sucessos anteriores são históricos e não validam o bridge atual. |
+| Botão rápido / thumbnails | Na árvore 5.1.0, o padrão do hover exige 600 × 600 px quando o filtro está desligado; com o filtro ligado, usa o slider. Imagens de `ytimg.com` e fontes de vídeo encontradas dentro de cards/links de prévia do YouTube ficam fora do botão rápido e do lote automático; capas podem ser mostradas como candidatas revisáveis no painel, mesmo abaixo do slider. O player da página de reprodução não é excluído apenas por estar no YouTube. | É uma correção estática nos caminhos de hover e inventário. A captura que motivou a mudança ainda não foi repetida no Chrome 158; prévias que escondam a relação com o link do vídeo ou usem CDNs/contextos diferentes ainda precisam de validação. |
+| Web aberta | Em teste histórico no Brave 158, com perfil isolado e interface gráfica, os botões de hover apareceram sobre uma imagem PNG 1200 × 1200 e um MP4 direto. A imagem foi salva no destino temporário personalizado; o SHA-256 coincidiu com a origem. O MP4 foi salvo integralmente; SHA-256 coincidiu, e `ffprobe` confirmou H.264 + AAC, 640 × 360 e 3 s. | Fixture HTTP controlada; não cobre amostra representativa, iframes cross-origin, HLS/DASH público, faixas separadas em player real ou fontes em APIs próprias. Não valida sites sociais. |
+| X | Dois posts públicos foram baixados em rodada anterior no Chrome isolado. Em outro comparativo, um post do Plucker gerou o mesmo MP4 por SHA-256 do Media Collector e outro foi baixado apenas pelo Media Collector. | Num teste histórico, `x.com/NASA` terminou em página de erro do navegador no Brave isolado. Não houve verificação de mídia nem download na revisão atual. Os sucessos anteriores são históricos e não validam o bridge atual. |
 | Instagram | Testes automatizados cobrem associação MSE no feed, vídeos em slides diferentes, eviction, expiração e troca de `blob:`. Um teste confirma que duas mídias-filhas já expostas são recolhidas sem avançar slides. Nesta rodada, o perfil público NASA abriu sem autenticação; a aba Reels mostrou thumbnails e a publicação aberta expôs um `<video>` não protegido de 720 × 1280, com dois controles do coletor. | O teste ao vivo confirmou exposição do elemento e presença dos controles, mas não baixou o arquivo. O link aberto redirecionou para uma publicação colaborativa. Stories, feed com vídeo e carrossel real ainda não tiveram download validado. A coleta direta do carrossel só funciona se o site já tiver renderizado as mídias-filhas; caso contrário, usa o fallback visual. |
 | Reddit | Testes simulados cobrem resolução de fontes e um manifesto DASH sintético. | Nesta rodada, a página nova mostrou desafio anti-bot e `old.reddit.com` redirecionou para login. Nenhum post ou arquivo de mídia ficou acessível; vídeo, áudio, GIF e galerias continuam sem validação ao vivo. |
-| Native Messaging | No Brave 158 isolado, uma fila de teste percorreu o worker e `native-stream.js`; o auxiliar publicou um MP4 fixture em destino temporário. SHA-256 coincidiu com a origem, e `ffprobe` confirmou H.264/AAC por 2 s. | A fixture veio de `127.0.0.1` e foi rotulada `x.com` apenas para acionar o ramo de stream; não é teste do X real nem de escolha de pasta pela interface. O fluxo `chrome.downloads.download` recebeu HTTP 200, mas o Brave headless marcou `USER_CANCELED`; não houve chamada à API de cancelamento pela extensão. Reproduzir em ambiente interativo. |
-| Destino | No Brave 158 isolado, o painel mostrou a pasta temporária personalizada após fechar e reabrir o navegador. Um download de imagem foi publicado nessa pasta pelo auxiliar local e seu SHA-256 coincidiu com a fixture; a área temporária de estágio ficou vazia após a publicação. | O teste verificou persistência e escrita usando configuração temporária isolada. O seletor do sistema não confirmou a escolha de um caminho novo por interação completa; essa parte da usabilidade continua pendente. Nenhum arquivo de QA permaneceu na pasta real do usuário. |
-| Chrome | — | No Chrome 158, os lançamentos desta rodada com perfil temporário não registraram a extensão via `--load-extension`; portanto, não validaram a revisão 5.0.1 no Chrome. Nenhum perfil pessoal foi usado. Carregamento manual sem compactação permanece pendente. |
+| Native Messaging | Em teste histórico no Brave 158 isolado, uma fila percorreu o worker e `native-stream.js`; o auxiliar publicou um MP4 fixture em destino temporário. SHA-256 coincidiu com a origem, e `ffprobe` confirmou H.264/AAC por 2 s. | A fixture veio de `127.0.0.1` e foi rotulada `x.com` apenas para acionar o ramo de stream; não é teste do X real nem de escolha de pasta pela interface. O fluxo `chrome.downloads.download` recebeu HTTP 200, mas o Brave headless marcou `USER_CANCELED`; não houve chamada à API de cancelamento pela extensão. Reproduzir em ambiente interativo. |
+| Destino | Em teste histórico no Brave 158 isolado, o painel mostrou a pasta temporária personalizada após fechar e reabrir o navegador. Um download de imagem foi publicado nessa pasta pelo auxiliar local e seu SHA-256 coincidiu com a fixture; a área temporária de estágio ficou vazia após a publicação. | O teste verificou persistência e escrita usando configuração temporária isolada. O seletor do sistema não confirmou a escolha de um caminho novo por interação completa; essa parte da usabilidade continua pendente. Nenhum arquivo de QA permaneceu na pasta real do usuário. |
+| Navegador apontado pelo usuário | O usuário apontou o Brave no perfil habitual para instalar e validar a 5.1.0. | A instalação e o hover nesta versão ainda precisam ser confirmados nessa janela. Os testes de perfis temporários anteriores são históricos; esta rodada não cria outro perfil. |
 | Permissões e privacidade | Manifesto e caminhos principais foram inspecionados estaticamente; não há APIs de cookies/histórico/cache. O auxiliar exige IP global para downloads HTTP(S), fixa o endereço validado na conexão direta e usa proxy local autenticado por tarefa no fluxo `yt-dlp`. O host registrado foi atualizado e recusou uma análise de URL loopback. | A barreira foi testada por unit tests e smoke test local de HTTP/CONNECT; não é firewall do sistema nem validação de todo protocolo ou plugin possível. Nenhuma conexão foi feita ao destino privado de fixture. |
 
 Quando uma mídia falhar, registre apenas o site, o formato observado, o estado do player e a mensagem de erro. Não publique cookies, tokens, URLs assinadas, conteúdo privado ou arquivos baixados.

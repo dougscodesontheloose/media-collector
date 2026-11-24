@@ -104,6 +104,16 @@
     return (item.kind === 'image' || item.kind === 'video') &&
       Number(item.width) > minimum && Number(item.height) > minimum;
   }
-  root.MediaCore = {absolute, candidates, bestSource, responsiveCandidates, imageExtension, key, clean, extension, sourceFolder, basename, filename, visible, webEligible};
+  function isYouTubePreview(pageHost, source, context = '') {
+    let mediaHost = '';
+    try { mediaHost = new URL(source).hostname.toLowerCase(); } catch {}
+    if (/(^|\.)ytimg\.com$/i.test(mediaHost) || mediaHost === 'img.youtube.com') return true;
+    const evidence = `${source || ''} ${context || ''}`;
+    const videoLink = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch|shorts|live)(?:[/?#]|$)|youtu\.be\/)/i.test(evidence);
+    const playerCard = /\b(?:ytd-thumbnail|ytd-video-renderer|ytd-compact-video-renderer|ytd-rich-grid-media|yt-lockup(?:-thumbnail|-view-model)?|youtube[-_ ]video[-_ ](?:thumbnail|preview))\b/i.test(evidence);
+    const onYouTube = /(^|\.)youtube\.com$/i.test(String(pageHost || '').toLowerCase());
+    return videoLink || (playerCard && onYouTube);
+  }
+  root.MediaCore = {absolute, candidates, bestSource, responsiveCandidates, imageExtension, key, clean, extension, sourceFolder, basename, filename, visible, webEligible, isYouTubePreview};
   if (typeof module !== 'undefined') module.exports = root.MediaCore;
 })(globalThis);
